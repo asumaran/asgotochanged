@@ -84,9 +84,10 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   its place (`repoInfo.line`). The edge under it carries the matches/total
   counter and, in brackets, the base (`[vs origin/main]`, asgitlog's scope).
   The main section is list and diff split by a divider; its bottom edge
-  carries the diff's scroll position. Errors and confirmations take the help
-  line. The list starts on screen row `listY(true)`, one cell in from the left
-  side, which is what the click-to-row math uses.
+  carries the list's position on the left and the diff's scroll position on
+  the right, each only while its side overflows. Errors and confirmations take
+  the help line. The list starts on screen row `listY(true)`, one cell in from
+  the left side, which is what the click-to-row math uses.
 - **Resizable list**: `shift+←/→` move the divider in 5% steps, as in
   asgitlog. The setting is the PREVIEW's share of the width, clamped to
   30-85 and saved as `split-columns` in the state dir; the default is 75

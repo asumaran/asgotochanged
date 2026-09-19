@@ -718,7 +718,7 @@ func (m model) render() string {
 	w := m.width
 	out := frameHead(w, stInfo.Render(m.repo.line(max(0, w-4))), m.counter(), m.ti.View())
 	out = append(out, splitMain(m.listLines(), strings.Split(m.prevVP.View(), "\n"),
-		m.listW(), m.detailsW(), diffEdge(m.ignoreWS, scrollPos(&m.prevVP)))...)
+		m.listW(), m.detailsW(), listPos(&m.listVP, nil), diffEdge(m.ignoreWS, scrollPos(&m.prevVP)))...)
 	out = append(out, framed(w, m.footer()), hline(w, "╰", "╯", "", ""))
 	return strings.Join(out, "\n")
 }
