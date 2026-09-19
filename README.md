@@ -30,7 +30,7 @@ Sibling of [asgitlog](https://github.com/asumaran/asgitlog) (same frame, same
 
 ## Requirements
 
-git and macOS; herdr >= 0.7.5 for the popup. [hunk](https://hunk.dev) renders
+git and macOS or Linux; herdr >= 0.7.5 for the popup. [hunk](https://hunk.dev) renders
 the diffs (`brew install hunk`); without it the diffs are git's own, in color.
 Enter opens `nvim`, or `$EDITOR` when there is no nvim.
 
@@ -131,4 +131,4 @@ hunk binary (`none` turns hunk off). `ASGOTOCHANGED_POPUP_WIDTH` /
 `scripts/release.sh <X.Y.Z>` gates on a clean tree + green vet/build/test,
 generates the CHANGELOG entry from commit subjects, syncs the manifest
 version, commits, tags and publishes the GitHub release; CI then attaches
-`asgotochanged-darwin-arm64`, the asset `fetch-binary.sh` downloads on installs.
+the `asgotochanged-<os>-<arch>` binaries (macOS and Linux, arm64 and amd64), the assets `fetch-binary.sh` downloads on installs.

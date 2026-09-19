@@ -19,7 +19,7 @@ setting and a cache of rendered diffs.
 
 Distributed as a herdr plugin (`herdr plugin install asumaran/asgotochanged`;
 the manifest's `[[build]]` runs `scripts/fetch-binary.sh`). Each GitHub Release
-attaches `asgotochanged-darwin-arm64`. There is no published library.
+attaches the `asgotochanged-<os>-<arch>` binaries (macOS and Linux, arm64 and amd64). There is no published library.
 
 ## Stack & layout
 
@@ -201,5 +201,5 @@ forces a full redraw (pty resize + SIGWINCH) before reading a frame.
 `scripts/release.sh <X.Y.Z>` — clean-tree + vet/build/test gate, CHANGELOG
 generation from commit subjects, manifest version sync, commit + tag + GitHub
 release; CI (`.github/workflows/release.yml`) attaches
-`asgotochanged-darwin-arm64`. Releasing never touches the linked plugin's
+the `asgotochanged-<os>-<arch>` binaries (macOS and Linux, arm64 and amd64). Releasing never touches the linked plugin's
 `./asgotochanged`; rebuild locally to keep testing dev code.
