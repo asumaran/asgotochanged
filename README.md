@@ -79,8 +79,11 @@ branch is compared against.
 | `ctrl+t` | diff mode: auto, side by side, single column (remembered) |
 | `ctrl+s` | show or ignore whitespace changes, like GitHub's "Hide whitespace" (`git diff -w`, remembered); `[-w]` on the diff's bottom edge while it is on |
 | `↑/↓`, `ctrl+p`/`ctrl+n` | move the cursor |
-| `shift+↓`/`shift+↑`, PgDn/PgUp, mouse wheel over the diff | scroll the diff |
+| PgDn/PgUp | move the cursor a page |
+| `alt+↑`/`alt+↓`, Home/End | top or bottom of the list |
+| `shift+↓`/`shift+↑`, mouse wheel over the diff | scroll the diff |
 | mouse wheel over the list | move the cursor |
+| `?` while the filter is empty, `f1` | expand the help line into every key (`esc` folds it) |
 | `shift+←`/`shift+→` | resize the list; the split is remembered (the list takes a quarter of the width by default) |
 | click | select a row |
 | `esc`, `q` with an empty filter | quit |

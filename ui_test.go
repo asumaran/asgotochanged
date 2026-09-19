@@ -70,7 +70,7 @@ func TestEnterOnDeletedFileStays(t *testing.T) {
 	if cmd != nil || !strings.Contains(m.notice, "does not exist") {
 		t.Errorf("cmd nil = %v, notice = %q", cmd == nil, m.notice)
 	}
-	if help := ansi.Strip(m.footer()); !strings.Contains(help, "nothing to edit") {
+	if help := ansi.Strip(m.footMsg()); !strings.Contains(help, "nothing to edit") {
 		t.Errorf("footer = %q", help)
 	}
 }
@@ -83,8 +83,8 @@ func TestDiffModeCyclesAndPersists(t *testing.T) {
 			t.Errorf("mode = %q, saved = %q, want %q", m.diffMode, loadDiffMode(), want)
 		}
 	}
-	if !strings.Contains(ansi.Strip(m.footer()), "diff: auto") {
-		t.Errorf("footer = %q, want the confirmation", ansi.Strip(m.footer()))
+	if !strings.Contains(ansi.Strip(m.footMsg()), "diff: auto") {
+		t.Errorf("footer = %q, want the confirmation", ansi.Strip(m.footMsg()))
 	}
 }
 
