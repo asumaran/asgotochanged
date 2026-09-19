@@ -1,3 +1,7 @@
+## v0.4.0 (2026-09-19)
+
+* feat: support linux and share the release process (5591a90)
+
 ## v0.3.0 (2026-09-19)
 
 * refactor: rename gotochanged to asgotochanged (5132a7d)
