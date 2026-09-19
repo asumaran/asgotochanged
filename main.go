@@ -115,7 +115,7 @@ func enterPaneCwd() {
 	}
 }
 
-// ---- the one preference ----
+// ---- preferences ----
 
 // stateDir is the herdr-injected per-plugin state dir; standalone runs fall
 // back to a fixed path under ~/.config/herdr.
@@ -143,6 +143,27 @@ func loadDiffMode() string {
 func saveDiffMode(mode string) {
 	_ = os.MkdirAll(stateDir(), 0o755)
 	_ = os.WriteFile(filepath.Join(stateDir(), "diff"), []byte(mode+"\n"), 0o644)
+}
+
+func loadIgnoreWS() bool {
+	data, _ := os.ReadFile(filepath.Join(stateDir(), "whitespace"))
+	return strings.TrimSpace(string(data)) == "ignore"
+}
+
+func saveIgnoreWS(ignore bool) {
+	value := "show"
+	if ignore {
+		value = "ignore"
+	}
+	_ = os.MkdirAll(stateDir(), 0o755)
+	_ = os.WriteFile(filepath.Join(stateDir(), "whitespace"), []byte(value+"\n"), 0o644)
+}
+
+func wsLabel(ignore bool) string {
+	if ignore {
+		return "ignored"
+	}
+	return "shown"
 }
 
 // runDump prints what the popup would list, without a TTY. With -query it

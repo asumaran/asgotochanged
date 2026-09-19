@@ -181,13 +181,17 @@ func loadChanges(ctx context.Context) (changes, error) {
 }
 
 // diffArgs is the git command that prints one file's diff. An untracked file
-// has nothing to be compared with, so it is diffed against /dev/null.
-func diffArgs(top, mergeBase string, f changedFile, color bool) []string {
+// has nothing to be compared with, so it is diffed against /dev/null. ignoreWS
+// is git's -w, what GitHub's "Hide whitespace" does.
+func diffArgs(top, mergeBase string, f changedFile, color, ignoreWS bool) []string {
 	flag := "--no-color"
 	if color {
 		flag = "--color=always"
 	}
 	args := []string{"-C", top, "-c", "core.quotepath=false", "diff", flag}
+	if ignoreWS {
+		args = append(args, "-w")
+	}
 	if f.status == "?" {
 		return append(args, "--no-index", "--", "/dev/null", f.path)
 	}

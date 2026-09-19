@@ -116,7 +116,7 @@ func TestRenderDiffPlainGit(t *testing.T) {
 		"old.txt":         "-gone soon",
 		"src/mod file.go": "+var x = 1",
 	} {
-		out, err := renderDiff(context.Background(), dir, ch.mergeBase, byPath[path], 80, false, "", nil)
+		out, err := renderDiff(context.Background(), dir, ch.mergeBase, byPath[path], 80, false, false, "", nil)
 		if err != nil || !strings.Contains(stripANSI(out), want) {
 			t.Errorf("%s: err = %v, diff lacks %q:\n%s", path, err, want, stripANSI(out))
 		}
@@ -128,7 +128,7 @@ func TestRenderDiffCancelled(t *testing.T) {
 	ch, _ := loadChanges(context.Background())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	msg := renderPreviewCmd(ctx, dir, ch.mergeBase, ch.files[0], "k", 80, diffSingle, "")()
+	msg := renderPreviewCmd(ctx, dir, ch.mergeBase, ch.files[0], "k", 80, diffSingle, false, "")()
 	if pm, ok := msg.(previewMsg); !ok || !pm.cancelled {
 		t.Errorf("msg = %+v, want a cancelled render", msg)
 	}
@@ -168,5 +168,36 @@ func TestDiskCacheIsAddressedByThePatch(t *testing.T) {
 	none.put("/bin/hunk", "/repo", patch, 80, diffSingle, "x") // a nil cache stores nothing and never panics
 	if _, ok := none.get("/bin/hunk", "/repo", patch, 80, diffSingle); ok {
 		t.Error("nil cache hit")
+	}
+}
+
+// TestRenderDiffIgnoringWhitespace: -w keeps the real changes of a file and
+// says so when there is nothing else.
+func TestRenderDiffIgnoringWhitespace(t *testing.T) {
+	dir := testRepo(t)
+	keep := changedFile{status: "M", path: "keep.txt"}
+	render := func(ignoreWS bool) string {
+		t.Helper()
+		ch, err := loadChanges(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		msg := renderPreviewCmd(context.Background(), dir, ch.mergeBase, keep, "k", 80, diffSingle, ignoreWS, "")()
+		return stripANSI(msg.(previewMsg).content)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "keep.txt"), []byte("one\n\ttwo\nthree\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out := render(false); !strings.Contains(out, "-two") || !strings.Contains(out, "+three") {
+		t.Errorf("the plain diff shows the indentation change:\n%s", out)
+	}
+	if out := render(true); strings.Contains(out, "-two") || !strings.Contains(out, "+three") {
+		t.Errorf("-w keeps +three and drops the indentation change:\n%s", out)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "keep.txt"), []byte("one\n\ttwo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out := render(true); !strings.Contains(out, "only whitespace changes") {
+		t.Errorf("a file that only changed in whitespace says so:\n%s", out)
 	}
 }

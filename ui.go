@@ -73,6 +73,7 @@ type keyMap struct {
 	Down     key.Binding
 	Edit     key.Binding
 	DiffMode key.Binding
+	Space    key.Binding
 	Quit     key.Binding
 	PrevUp   key.Binding
 	PrevDown key.Binding
@@ -82,7 +83,7 @@ type keyMap struct {
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Filter, k.Edit, k.DiffMode, k.PrevDown, k.Shrink, k.Quit}
+	return []key.Binding{k.Filter, k.Edit, k.DiffMode, k.Space, k.PrevDown, k.Shrink, k.Quit}
 }
 func (k keyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
 
@@ -92,6 +93,7 @@ func defaultKeys() keyMap {
 		Down:     key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓/^n", "down")),
 		Edit:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "edit")),
 		DiffMode: key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("^t", "diff mode")),
+		Space:    key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("^s", "whitespace")),
 		Quit:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc/q", "quit")),
 		PrevUp:   key.NewBinding(key.WithKeys("shift+up", "pgup"), key.WithHelp("⇧↑", "")),
 		PrevDown: key.NewBinding(key.WithKeys("shift+down", "pgdown"), key.WithHelp("⇧↓", "scroll diff")),
@@ -123,6 +125,7 @@ type model struct {
 	loadErr  string
 	hunkBin  string
 	diffMode string // auto | sbs | single
+	ignoreWS bool   // git's -w: changes in whitespace are left out of the diffs
 
 	rows   []fileRow
 	cursor int
@@ -155,6 +158,7 @@ func newModel(repo repoInfo, ch changes, loadErr, diffMode, hunkBin, query strin
 		loadErr:  loadErr,
 		hunkBin:  hunkBin,
 		diffMode: diffMode,
+		ignoreWS: loadIgnoreWS(),
 		split:    loadSplit(stateDir()),
 		ti:       newFilterInput(),
 		listVP:   viewport.New(viewport.WithWidth(30), viewport.WithHeight(16)),
@@ -400,7 +404,7 @@ func (m *model) updatePreview() tea.Cmd {
 		return nil
 	}
 	mode := fileDiff(m.diffMode, m.prevW(), *f)
-	key := previewKey(m.repo.Top, *f, m.prevW(), mode)
+	key := previewKey(m.repo.Top, *f, m.prevW(), mode, m.ignoreWS)
 	if key == m.prevKey {
 		return m.prefetch()
 	}
@@ -423,7 +427,7 @@ func (m *model) updatePreview() tea.Cmd {
 func (m *model) startRender(f changedFile, key, mode string) tea.Cmd {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.inflight[key] = cancel
-	return renderPreviewCmd(ctx, m.repo.Top, m.ch.mergeBase, f, key, m.prevW(), mode, m.hunkBin)
+	return renderPreviewCmd(ctx, m.repo.Top, m.ch.mergeBase, f, key, m.prevW(), mode, m.ignoreWS, m.hunkBin)
 }
 
 // around is the rows worth having rendered besides the selected one, nearest
@@ -454,7 +458,7 @@ func (m *model) prefetch() tea.Cmd {
 		}
 		f := m.rows[i].f
 		mode := fileDiff(m.diffMode, m.prevW(), f)
-		key := previewKey(m.repo.Top, f, m.prevW(), mode)
+		key := previewKey(m.repo.Top, f, m.prevW(), mode, m.ignoreWS)
 		if _, ok := m.renders[key]; ok {
 			continue
 		}
@@ -472,7 +476,7 @@ func (m *model) cancelFarthest() {
 	keep := map[string]int{}
 	for rank, i := range m.around() {
 		f := m.rows[i].f
-		keep[previewKey(m.repo.Top, f, m.prevW(), fileDiff(m.diffMode, m.prevW(), f))] = rank
+		keep[previewKey(m.repo.Top, f, m.prevW(), fileDiff(m.diffMode, m.prevW(), f), m.ignoreWS)] = rank
 	}
 	victim, worst := "", -1
 	for key := range m.inflight {
@@ -638,6 +642,10 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.diffMode = nextDiffMode(m.diffMode)
 		saveDiffMode(m.diffMode)
 		return m, tea.Batch(m.setFlash("diff: "+diffLabel(m.diffMode, m.prevW())), m.updatePreview())
+	case key.Matches(msg, m.keys.Space):
+		m.ignoreWS = !m.ignoreWS
+		saveIgnoreWS(m.ignoreWS)
+		return m, tea.Batch(m.setFlash("whitespace: "+wsLabel(m.ignoreWS)), m.updatePreview())
 	case key.Matches(msg, m.keys.Up):
 		m.setCursor(m.cursor - 1)
 		m.renderList()
@@ -697,7 +705,7 @@ func (m model) render() string {
 	w := m.width
 	out := frameHead(w, stInfo.Render(m.repo.line(max(0, w-4))), m.counter(), m.ti.View())
 	out = append(out, splitMain(m.listLines(), strings.Split(m.prevVP.View(), "\n"),
-		m.listW(), m.detailsW(), scrollPos(&m.prevVP))...)
+		m.listW(), m.detailsW(), diffEdge(m.ignoreWS, scrollPos(&m.prevVP)))...)
 	out = append(out, framed(w, m.footer()), hline(w, "╰", "╯", "", ""))
 	return strings.Join(out, "\n")
 }
@@ -739,6 +747,19 @@ func (m model) leftColumn() string {
 		msg = "No changes vs " + m.ch.base
 	}
 	return stDim.Render(truncate(" "+msg, m.listW()))
+}
+
+// diffEdge is what the main section's bottom edge says about the diff: a mark
+// while git's -w is on, and the scroll position.
+func diffEdge(ignoreWS bool, pos string) string {
+	if !ignoreWS {
+		return pos
+	}
+	mark := stScope.Render("[-w]")
+	if pos == "" {
+		return mark
+	}
+	return mark + stDim.Render(" ─ ") + pos
 }
 
 // footer is the key help, or a notice or confirmation while one is showing.

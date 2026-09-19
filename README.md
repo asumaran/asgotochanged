@@ -24,7 +24,7 @@ Sibling of [asgitlog](https://github.com/asumaran/asgitlog) (same frame, same
 │ ?  notes/PLAN.md          │ ▌15    -  return subtotal                                                │
 │                           │ ▌   15 +  return subtotal + tax(subtotal)                                │
 ├───────────────────────────┴─────────────────────────────────────────────────────────────────── 5/64 ─┤
-│ type filter • enter edit • ^t diff mode • ⇧↓ scroll diff • ⇧←/⇧→ resize • esc/q quit                 │
+│ type filter • enter edit • ^t diff mode • ^s whitespace • ⇧↓ scroll diff • ⇧←/⇧→ resize • esc/q quit │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -77,6 +77,7 @@ branch is compared against.
 | --- | --- |
 | `enter` | open the file in the editor; quitting the editor comes back to the list |
 | `ctrl+t` | diff mode: auto, side by side, single column (remembered) |
+| `ctrl+s` | show or ignore whitespace changes, like GitHub's "Hide whitespace" (`git diff -w`, remembered); `[-w]` on the diff's bottom edge while it is on |
 | `↑/↓`, `ctrl+p`/`ctrl+n` | move the cursor |
 | `shift+↓`/`shift+↑`, PgDn/PgUp, mouse wheel | scroll the diff |
 | `shift+←`/`shift+→` | resize the list; the split is remembered (the list takes a quarter of the width by default) |
@@ -106,7 +107,8 @@ As a command: `gotochanged [query]`, where `query` is the initial filter.
   (`GOTOCHANGED_NO_CACHE=1` turns the cache off). You only see the colors come
   in the first time a diff is ever rendered.
 - gotochanged only reads the repository. It never stages, commits or checks
-  anything out. What it writes is its own: the diff mode and that cache.
+  anything out. What it writes is its own: the diff mode, the whitespace setting and
+  that cache.
 
 ## Development
 

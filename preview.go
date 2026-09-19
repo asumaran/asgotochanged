@@ -111,15 +111,18 @@ type previewMsg struct {
 // previewKey identifies a render. mode is the effective diff mode, so auto
 // and an explicit mode share their renders; the mtime makes a render of an
 // edited file unreachable.
-func previewKey(top string, f changedFile, width int, mode string) string {
+func previewKey(top string, f changedFile, width int, mode string, ignoreWS bool) string {
 	var mtime int64
 	if st, err := os.Stat(filepath.Join(top, f.path)); err == nil {
 		mtime = st.ModTime().UnixNano()
 	}
+	if ignoreWS {
+		mode += "-w"
+	}
 	return f.status + "|" + f.path + "|" + strconv.Itoa(width) + "|" + mode + "|" + strconv.FormatInt(mtime, 10)
 }
 
-func renderPreviewCmd(ctx context.Context, top, mergeBase string, f changedFile, key string, width int, mode, hunkBin string) tea.Cmd {
+func renderPreviewCmd(ctx context.Context, top, mergeBase string, f changedFile, key string, width int, mode string, ignoreWS bool, hunkBin string) tea.Cmd {
 	// At most a partial and a final message: the render never blocks on a
 	// program that went away.
 	msgs := make(chan previewMsg, 2)
@@ -127,11 +130,14 @@ func renderPreviewCmd(ctx context.Context, top, mergeBase string, f changedFile,
 	rendered := func(body string, partial bool) previewMsg {
 		if strings.TrimSpace(body) == "" {
 			body = stDim.Render("(no textual changes)")
+			if ignoreWS {
+				body = stDim.Render("(only whitespace changes)")
+			}
 		}
 		return previewMsg{key: key, content: body, partial: partial}
 	}
 	run := func() previewMsg {
-		body, err := renderDiff(ctx, top, mergeBase, f, width, mode == diffSBS, hunkBin, func(body string) {
+		body, err := renderDiff(ctx, top, mergeBase, f, width, mode == diffSBS, ignoreWS, hunkBin, func(body string) {
 			msg := rendered(body, true)
 			msg.next = next
 			msgs <- msg
@@ -152,12 +158,17 @@ func renderPreviewCmd(ctx context.Context, top, mergeBase string, f changedFile,
 
 // renderDiff renders the file's patch with hunk, or returns git's colored
 // diff when there is no hunk. early gets hunk's first frame.
-func renderDiff(ctx context.Context, top, mergeBase string, f changedFile, width int, sbs bool, hunkBin string, early func(string)) (string, error) {
-	git := exec.CommandContext(ctx, "git", diffArgs(top, mergeBase, f, hunkBin == "")...)
+func renderDiff(ctx context.Context, top, mergeBase string, f changedFile, width int, sbs, ignoreWS bool, hunkBin string, early func(string)) (string, error) {
+	git := exec.CommandContext(ctx, "git", diffArgs(top, mergeBase, f, hunkBin == "", ignoreWS)...)
 	// `git diff --no-index` exits 1 for "there are differences".
 	out, err := limitedOutput(git, f.status == "?")
 	if err != nil {
 		return "", err
+	}
+	// With -w a file that only changed in whitespace has no hunks left; some
+	// git versions still print its header, which is nothing to show.
+	if ignoreWS && !strings.Contains(out, "@@ -") && !strings.Contains(out, "Binary files") {
+		return "", nil
 	}
 	if hunkBin == "" {
 		return strings.ReplaceAll(out, "\t", "    "), nil

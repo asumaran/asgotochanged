@@ -14,8 +14,8 @@ Same frame and diff renderer as `asgitlog`, same filtering and lifecycle as the
 goto pickers.
 
 It only reads the repository. It never stages, commits, stashes or checks
-anything out; what it writes is its own: the chosen diff mode and a cache of
-rendered diffs.
+anything out; what it writes is its own: the chosen diff mode, the whitespace
+setting and a cache of rendered diffs.
 
 Distributed as a herdr plugin (`herdr plugin install asumaran/gotochanged`;
 the manifest's `[[build]]` runs `scripts/fetch-binary.sh`). Each GitHub Release
@@ -132,6 +132,15 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   at once with no partial before it. Only the first ever render of a patch
   shows the repaint. In memory the key is status, path, width, effective mode
   and file mtime. Plain git renders are instant: no prefetch, no disk cache.
+- **Whitespace**: `ctrl+s` turns git's `-w` (`--ignore-all-space`, what
+  GitHub's "Hide whitespace" does) on and off for every diff; saved as
+  `whitespace` in the state dir. It is a flag of the `git diff` that makes the
+  patch, so it does not depend on hunk. The flag is part of the in-memory
+  render key; the disk cache is addressed by the patch, which already differs.
+  A file with nothing left says `(only whitespace changes)`. While it is on,
+  the main section's bottom edge carries `[-w]` before the scroll position
+  (`diffEdge`): that edge is the one about the diff; the top one is about the
+  list, which `-w` does not change.
 - **Diff mode**: auto / side by side / single column on `ctrl+t`, saved in the
   plugin state dir (`HERDR_PLUGIN_STATE_DIR`, standalone
   `~/.config/herdr/gotochanged-tui`). Auto goes side by side from 120 columns

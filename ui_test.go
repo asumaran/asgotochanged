@@ -30,6 +30,7 @@ var (
 	keyEnter = tea.KeyPressMsg{Code: tea.KeyEnter}
 	keyDown  = tea.KeyPressMsg{Code: tea.KeyDown}
 	keyCtrlT = tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
+	keyCtrlS = tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
 
 	keyShiftLeft  = tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModShift}
 	keyShiftRight = tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModShift}
@@ -194,7 +195,7 @@ func TestPrefetchIsBounded(t *testing.T) {
 	// The nearest rows go first: the one below, then (none above row 0) the next.
 	for _, i := range []int{1, 2} {
 		f := m.rows[i].f
-		if _, ok := m.inflight[previewKey(m.repo.Top, f, m.prevW(), fileDiff(m.diffMode, m.prevW(), f))]; !ok {
+		if _, ok := m.inflight[previewKey(m.repo.Top, f, m.prevW(), fileDiff(m.diffMode, m.prevW(), f), m.ignoreWS)]; !ok {
 			t.Errorf("row %d is not being rendered ahead", i)
 		}
 	}
@@ -285,5 +286,30 @@ func TestResizeList(t *testing.T) {
 	}
 	if m.split != splitMax {
 		t.Errorf("split should clamp at %d, got %d", splitMax, m.split)
+	}
+}
+
+// TestWhitespaceToggle: ctrl+s flips git's -w, says so, asks for another
+// render and is there for the next run.
+func TestWhitespaceToggle(t *testing.T) {
+	next, _ := fixture(t).Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	m := next.(model)
+	before := m.prevKey
+	m = press(m, keyCtrlS)
+	if !m.ignoreWS || !loadIgnoreWS() || m.prevKey == before || !strings.Contains(ansi.Strip(m.render()), "whitespace: ignored") {
+		t.Errorf("ignoreWS=%v saved=%v key %q -> %q", m.ignoreWS, loadIgnoreWS(), before, m.prevKey)
+	}
+	// The confirmation is cleared by a timer; the mark on the diff's edge stays.
+	plain := strings.Split(ansi.Strip(m.render()), "\n")
+	if edge := plain[len(plain)-3]; !strings.Contains(edge, "┴") || !strings.Contains(edge, "[-w]") {
+		t.Errorf("the bottom edge should carry [-w]: %q", edge)
+	}
+	m = press(m, keyCtrlS)
+	if strings.Contains(ansi.Strip(m.render()), "[-w]") {
+		t.Error("the mark goes away with the setting")
+	}
+	m = press(m, keyCtrlS, keyCtrlS)
+	if m.ignoreWS || loadIgnoreWS() {
+		t.Errorf("second press: ignoreWS=%v saved=%v key=%q", m.ignoreWS, loadIgnoreWS(), m.prevKey)
 	}
 }
