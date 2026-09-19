@@ -162,8 +162,10 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   the filter is empty.
 - **Paths** that do not fit lose their head, not their tail (`pathCells`), so
   the file name is always visible; the directory part is dimmed.
-- **Mouse**: the wheel always scrolls the diff; a left click on a list row
-  moves the cursor and never opens the editor (same reasoning as gotopr).
+- **Mouse**: the wheel follows the pointer, as in asgitlog: over the list
+  (`overList`) it moves the cursor through the same code as the arrow keys,
+  anywhere else it scrolls the diff. A left click on a list row moves the
+  cursor and never opens the editor.
 - **Alt screen and mouse mode** are declared per frame in `View()`; there is
   no `tea.WithAltScreen` program option in v2.
 
