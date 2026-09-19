@@ -30,6 +30,9 @@ var (
 	keyEnter = tea.KeyPressMsg{Code: tea.KeyEnter}
 	keyDown  = tea.KeyPressMsg{Code: tea.KeyDown}
 	keyCtrlT = tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
+
+	keyShiftLeft  = tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModShift}
+	keyShiftRight = tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModShift}
 )
 
 func fixture(t *testing.T) model {
@@ -155,7 +158,9 @@ func TestPathCellsKeepsTheFileName(t *testing.T) {
 
 func TestNothingChanged(t *testing.T) {
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
-	m := newModel(repoInfo{Top: "/r", Branch: "main"}, changes{base: "origin/main"}, "", diffAuto, "", "")
+	next, _ := newModel(repoInfo{Top: "/r", Branch: "main"}, changes{base: "origin/main"}, "", diffAuto, "", "").
+		Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	m := next.(model)
 	if out := ansi.Strip(m.render()); !strings.Contains(out, "No changes vs origin/main") {
 		t.Errorf("render:\n%s", out)
 	}
@@ -248,5 +253,37 @@ func TestAutoGoesSingleColumnForOneSidedFiles(t *testing.T) {
 	// An explicit mode is the user's call, whatever the file.
 	if got := fileDiff(diffSBS, wide, changedFile{status: "A"}); got != diffSBS {
 		t.Errorf("explicit side by side on an added file: %q", got)
+	}
+}
+
+// TestResizeList: shift+arrows move the divider, the frame still fits, and
+// the position is there for the next run.
+func TestResizeList(t *testing.T) {
+	next, _ := fixture(t).Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	m := next.(model)
+	w := m.listW()
+
+	m = press(m, keyShiftRight)
+	if m.listW() <= w || m.split != splitDefault-splitStep || loadSplit(stateDir()) != m.split {
+		t.Errorf("grow: list %d -> %d, split=%d, saved=%d", w, m.listW(), m.split, loadSplit(stateDir()))
+	}
+	if m.listVP.Width() != m.listW() || m.prevVP.Width() != m.prevW() {
+		t.Errorf("viewports %d | %d, want %d | %d", m.listVP.Width(), m.prevVP.Width(), m.listW(), m.prevW())
+	}
+	for i, l := range strings.Split(m.render(), "\n") {
+		if got := ansi.StringWidth(l); got != 120 {
+			t.Errorf("line %d is %d cells after the resize", i, got)
+		}
+	}
+
+	m = press(m, keyShiftLeft, keyShiftLeft)
+	if m.listW() >= w || m.split != splitDefault+splitStep {
+		t.Errorf("shrink: list %d -> %d, split=%d", w, m.listW(), m.split)
+	}
+	for range 10 {
+		m = press(m, keyShiftLeft)
+	}
+	if m.split != splitMax {
+		t.Errorf("split should clamp at %d, got %d", splitMax, m.split)
 	}
 }

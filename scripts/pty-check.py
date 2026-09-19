@@ -148,7 +148,8 @@ def edited():
 
 # One frame (see frame.go): border, context, counter edge, input, main edge,
 # list | preview, bottom edge, help, border.
-def listw(): return max((COLS - 2) * 30 // 100, 24)
+def listw(): return max(COLS - 3 - (COLS - 2) * 75 // 100, 10)   # the default split: list 25%, preview 75%
+def divider(f): return f[5].index("│", 1)
 def left(f):  return [l[1:1 + listw()].rstrip() for l in f[5:-3] if l[1:1 + listw()].strip()]
 def right(f): return "\n".join(l[listw() + 3:-1].rstrip() for l in f[5:-3])
 def prompt(f): return f[3].strip("│ ").rstrip()
@@ -196,7 +197,22 @@ check(left(f)[2].startswith("▌A  src/tax.ts") and edited() == [], "a click sel
 os.write(s.master, b"q"); s.pump(0.4)
 check(s.finish() == 0, "q quits with an empty filter")
 
-# ---------- run 3: nothing changed on the base branch ----------
+# ---------- run 3: the divider moves and stays where it was left ----------
+s = session()
+f = s.start("gotochanged (dev) ❯"); at = divider(f)
+f = s.send(b"\x1b[1;2C", 0.6); grown = divider(f)   # shift+right
+check(grown > at and all(len(l) == COLS for l in f), "shift+right grows the list: %d -> %d" % (at, grown))
+f = s.send(b"\x1b[1;2D", 0.6)                        # shift+left
+check(divider(f) == at, "shift+left shrinks it back: %d" % divider(f))
+s.send(b"\x1b[1;2C", 0.6)
+os.write(s.master, ESC); s.pump(0.4); s.finish()
+s = session()
+f = s.start("gotochanged (dev) ❯")
+check(divider(f) == grown, "the next run opens with the same split: %d" % divider(f))
+s.send(b"\x1b[1;2D", 0.6)
+os.write(s.master, ESC); s.pump(0.4); s.finish()
+
+# ---------- run 4: nothing changed on the base branch ----------
 git("stash", "-q", "-u"); git("checkout", "-q", "main")
 s = session()
 f = s.start("gotochanged (dev) ❯"); dump("on the base", f)

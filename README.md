@@ -13,19 +13,19 @@ Sibling of [asgitlog](https://github.com/asumaran/asgitlog) (same frame, same
 [gotosession](https://github.com/asumaran/gotosession)).
 
 ```
-╭──────────────────────────────────────────────────────────────────────────────────────────────╮
-│ ~/wt/shop/fix-cart-total  fix/cart-total -> origin/fix/cart-total (ahead 2, behind 0)        │
-├──────────────────────────────────────────────────────────────────────── 4/4 [vs origin/main] ─┤
-│ gotochanged ❯                                                                                │
-├───────────────────────────┬──────────────────────────────────────────────────────────────────┤
-│▌M  src/cart/total.ts      │  src/cart/total.ts                                      +12 -3   │
-│ A  src/cart/tax.ts        │ ▌··· 13 unchanged lines ···                                      │
-│ D  src/cart/old.ts        │ ▌14 14    const subtotal = items.reduce(sum, 0)                  │
-│ ?  notes/PLAN.md          │ ▌15    -  return subtotal                                        │
-│                           │ ▌   15 +  return subtotal + tax(subtotal)                        │
-├───────────────────────────┴─────────────────────────────────────────────────────────── 5/64 ─┤
-│ type filter • enter edit • ^t diff mode • ⇧↓ scroll diff • esc/q quit                        │
-╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ~/wt/shop/fix-cart-total  fix/cart-total -> origin/fix/cart-total (ahead 2, behind 0)                │
+├──────────────────────────────────────────────────────────────────────────────── 4/4 [vs origin/main] ─┤
+│ gotochanged ❯                                                                                        │
+├───────────────────────────┬──────────────────────────────────────────────────────────────────────────┤
+│▌M  src/cart/total.ts      │  src/cart/total.ts                                      +12 -3           │
+│ A  src/cart/tax.ts        │ ▌··· 13 unchanged lines ···                                              │
+│ D  src/cart/old.ts        │ ▌14 14    const subtotal = items.reduce(sum, 0)                          │
+│ ?  notes/PLAN.md          │ ▌15    -  return subtotal                                                │
+│                           │ ▌   15 +  return subtotal + tax(subtotal)                                │
+├───────────────────────────┴─────────────────────────────────────────────────────────────────── 5/64 ─┤
+│ type filter • enter edit • ^t diff mode • ⇧↓ scroll diff • ⇧←/⇧→ resize • esc/q quit                 │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ## Requirements
@@ -79,6 +79,7 @@ branch is compared against.
 | `ctrl+t` | diff mode: auto, side by side, single column (remembered) |
 | `↑/↓`, `ctrl+p`/`ctrl+n` | move the cursor |
 | `shift+↓`/`shift+↑`, PgDn/PgUp, mouse wheel | scroll the diff |
+| `shift+←`/`shift+→` | resize the list; the split is remembered (the list takes a quarter of the width by default) |
 | click | select a row |
 | `esc`, `q` with an empty filter | quit |
 

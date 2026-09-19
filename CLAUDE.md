@@ -47,6 +47,11 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
   the final one, diff modes.
 - `cache.go` — the finished renders on disk between runs, addressed by the
   patch they were made from (scheme copied from asgitlog).
+- `split.go` — the divider between the list and the preview: `loadSplit`,
+  `saveSplit`, `stepSplit`, `splitWidths`. The file is copied, not imported:
+  the same one ships in gotosession, gotonotes, gotopr and gotojira (all under
+  github.com/asumaran), and there is no shared library. A pull request only
+  needs to change it here; the maintainer ports the change to the other copies.
 - `ui.go` — the bubbletea model/Update/View, editing through
   `tea.ExecProcess`, mouse, styles, `pathCells`.
 - `scripts/pty-check.py` — end-to-end TUI driver (see Testing).
@@ -77,6 +82,11 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   carries the diff's scroll position. Errors and confirmations take the help
   line. The list starts on screen row `listY(true)`, one cell in from the left
   side, which is what the click-to-row math uses.
+- **Resizable list**: `shift+←/→` move the divider in 5% steps, as in
+  asgitlog. The setting is the PREVIEW's share of the width, clamped to
+  30-85 and saved as `split-columns` in the state dir; the default is 75
+  (list 25%, preview 75%), the same in every picker of the family. Rows
+  must degrade for a narrow list instead of truncating their last columns.
 - **No preview header**: hunk already heads every file with its path and its
   `+n -m`. Do not add a header above the diff.
 - **What is listed**: ONE `git diff --name-status --no-renames
