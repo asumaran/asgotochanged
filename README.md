@@ -119,7 +119,7 @@ go build -o asgotochanged .   # local build (plugin runs ./asgotochanged from th
 ./asgotochanged -dump -query total   # matches with their scores
 go vet ./... && go test ./...
 scripts/pty-check.py ./asgotochanged   # end-to-end TUI check on a pty (python3 + pyte)
-herdr plugin link ~/Developer/asgotochanged   # register the working copy (no build step)
+herdr plugin link "$PWD"   # register the working copy (no build step)
 ```
 
 `ASGOTOCHANGED_EDITOR` replaces the editor command and `ASGOTOCHANGED_HUNK` the

@@ -68,7 +68,7 @@ go build -o asgotochanged .    # plugin runs ./asgotochanged from the repo root
 ./asgotochanged -dump          # changed files of the current checkout, no TTY
 ./asgotochanged -dump -query x # matches with scores
 go vet ./... && go test ./...
-herdr plugin link ~/Developer/asgotochanged   # link does NOT run [[build]]; go build yourself
+herdr plugin link "$PWD"   # link does NOT run [[build]]; go build yourself
 ```
 
 Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
