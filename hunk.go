@@ -54,7 +54,7 @@ func renderHunk(ctx context.Context, hunkBin string, patch []byte, width int, sb
 	if len(bytes.TrimSpace(patch)) == 0 {
 		return "", nil
 	}
-	file, err := os.CreateTemp("", "gotochanged-*.patch")
+	file, err := os.CreateTemp("", "hunk-*.patch")
 	if err != nil {
 		return "", err
 	}

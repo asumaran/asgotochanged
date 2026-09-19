@@ -38,11 +38,16 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
 - `frame.go` — the single-frame layout shared by the family: `hline`, `fit`,
   `framed`, `frameHead`, `splitMain`, `scrollPos` and the section rows
   (`mainY`, `listY`, `frameRows`, each with or without the optional context
-  line). Byte-identical to the copy in gotosession, gotonotes, gotopr and
-  gotojira: change them together.
+  line). Copied, not imported: the same file ships in gotosession, gotonotes,
+  gotopr and gotojira. A pull request only needs to change it here; the
+  maintainer ports the change to the other copies.
 - `hunk.go` — hunk as the diff renderer, copied from asgitlog: hunk is a
   full-screen TUI with no static output, so it runs on a tall pty behind a
   terminal emulator and the emulated screen is read back as ANSI lines.
+  The same `hunk.go` and `hunk_test.go` ship in github.com/asumaran/asgitlog
+  (copied, not imported). A pull request only needs to change them here; the
+  maintainer ports the change. Only the renderer is shared: the cache and the
+  diff modes differ on purpose.
 - `preview.go` — the diff as a `tea.Cmd`: cancellable, a partial frame then
   the final one, diff modes.
 - `cache.go` — the finished renders on disk between runs, addressed by the
