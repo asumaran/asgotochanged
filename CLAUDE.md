@@ -120,7 +120,10 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
 - **Diff mode**: auto / side by side / single column on `ctrl+t`, saved in the
   plugin state dir (`HERDR_PLUGIN_STATE_DIR`, standalone
   `~/.config/herdr/gotochanged-tui`). Auto goes side by side from 120 columns
-  of diff area, asgitlog's threshold.
+  of diff area, asgitlog's threshold, except for a file that was only added or
+  only deleted (`A`, `D`, `?`): side by side would leave one half empty and
+  cut the other at the middle, so those go single column (`fileDiff`). An
+  explicit mode is obeyed whatever the file.
 - **Editing**: `tea.ExecProcess` hands the terminal to the editor
   (`GOTOCHANGED_EDITOR`, else `nvim`, else `$EDITOR`, else `vi`) with the
   absolute path, cwd at the top. When it exits the list is loaded again

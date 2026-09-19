@@ -182,14 +182,14 @@ func TestPrefetchIsBounded(t *testing.T) {
 	if len(m.inflight) != 1 {
 		t.Fatalf("inflight = %d, want the selection only until it reports", len(m.inflight))
 	}
-	mode := effectiveDiff(m.diffMode, m.prevW())
-	m.prefetch(mode)
+	m.prefetch()
 	if len(m.inflight) != maxPipelines {
 		t.Errorf("inflight = %d, want %d", len(m.inflight), maxPipelines)
 	}
 	// The nearest rows go first: the one below, then (none above row 0) the next.
 	for _, i := range []int{1, 2} {
-		if _, ok := m.inflight[previewKey(m.repo.Top, m.rows[i].f, m.prevW(), mode)]; !ok {
+		f := m.rows[i].f
+		if _, ok := m.inflight[previewKey(m.repo.Top, f, m.prevW(), fileDiff(m.diffMode, m.prevW(), f))]; !ok {
 			t.Errorf("row %d is not being rendered ahead", i)
 		}
 	}
@@ -198,8 +198,7 @@ func TestPrefetchIsBounded(t *testing.T) {
 func TestSelectionNeverWaitsForASlot(t *testing.T) {
 	m := hunkFixture(t)
 	m.updatePreview()
-	mode := effectiveDiff(m.diffMode, m.prevW())
-	m.prefetch(mode)
+	m.prefetch()
 	m.cursor = 12 // far away from everything in flight
 	if cmd := m.updatePreview(); cmd == nil {
 		t.Fatal("the new selection must start rendering at once")
@@ -234,7 +233,20 @@ func TestFinishedRenderFreesItsSlotAndIsKept(t *testing.T) {
 func TestNoPrefetchWithoutHunk(t *testing.T) {
 	m := fixture(t)
 	m.updatePreview()
-	if m.prefetch(diffSingle) != nil || len(m.inflight) != 1 {
+	if m.prefetch() != nil || len(m.inflight) != 1 {
 		t.Errorf("plain git renders are instant: nothing to render ahead (inflight = %d)", len(m.inflight))
+	}
+}
+
+func TestAutoGoesSingleColumnForOneSidedFiles(t *testing.T) {
+	wide := autoSBSMinW + 40
+	for status, want := range map[string]string{"M": diffSBS, "T": diffSBS, "A": diffSingle, "D": diffSingle, "?": diffSingle} {
+		if got := fileDiff(diffAuto, wide, changedFile{status: status}); got != want {
+			t.Errorf("auto, %s: %q, want %q", status, got, want)
+		}
+	}
+	// An explicit mode is the user's call, whatever the file.
+	if got := fileDiff(diffSBS, wide, changedFile{status: "A"}); got != diffSBS {
+		t.Errorf("explicit side by side on an added file: %q", got)
 	}
 }

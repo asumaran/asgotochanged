@@ -97,7 +97,8 @@ As a command: `gotochanged [query]`, where `query` is the initial filter.
 - After the editor exits the list is read again: an edit can change a diff,
   add a file or make one disappear. The cursor stays on the file it was on.
 - A deleted file has nothing to open; the popup says so and stays up.
-- Auto goes side by side when the diff area is at least 120 columns wide.
+- Auto goes side by side when the diff area is at least 120 columns wide,
+  except for added, deleted and untracked files: one half would be empty.
 - hunk draws a diff first and its syntax highlighting a moment later. To keep
   that repaint off the screen, the files around the cursor are rendered ahead
   of time and finished renders are kept in `~/.cache/gotochanged` between runs

@@ -48,6 +48,16 @@ func effectiveDiff(mode string, width int) string {
 	return diffSingle
 }
 
+// fileDiff is the effective mode for one file. In auto, a file that was only
+// added or only deleted goes single column whatever the width: side by side
+// would leave one half empty and cut the other at the middle.
+func fileDiff(mode string, width int, f changedFile) string {
+	if mode == diffAuto && (f.status == "A" || f.status == "D" || f.status == "?") {
+		return diffSingle
+	}
+	return effectiveDiff(mode, width)
+}
+
 func diffLabel(mode string, width int) string {
 	label := "side-by-side"
 	if effectiveDiff(mode, width) == diffSingle {

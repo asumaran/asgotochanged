@@ -384,23 +384,23 @@ func (m *model) updatePreview() tea.Cmd {
 		m.prevVP.SetContent("")
 		return nil
 	}
-	mode := effectiveDiff(m.diffMode, m.prevW())
+	mode := fileDiff(m.diffMode, m.prevW(), *f)
 	key := previewKey(m.repo.Top, *f, m.prevW(), mode)
 	if key == m.prevKey {
-		return m.prefetch(mode)
+		return m.prefetch()
 	}
 	m.prevKey = key
 	m.prevVP.GotoTop()
 	if c, ok := m.renders[key]; ok {
 		m.prevVP.SetContent(c)
-		return m.prefetch(mode)
+		return m.prefetch()
 	}
 	m.prevVP.SetContent(stDim.Render("rendering…"))
 	if _, running := m.inflight[key]; running {
 		return nil // rendered ahead and about to report
 	}
 	if len(m.inflight) >= maxPipelines {
-		m.cancelFarthest(mode) // the selection never waits for a slot
+		m.cancelFarthest() // the selection never waits for a slot
 	}
 	return m.startRender(*f, key, mode)
 }
@@ -428,7 +428,7 @@ func (m *model) around() []int {
 // prefetch starts the renders of the rows around the cursor while there are
 // free pipelines. It runs again whenever a render reports back, so the window
 // fills up a few at a time.
-func (m *model) prefetch(mode string) tea.Cmd {
+func (m *model) prefetch() tea.Cmd {
 	if m.hunkBin == "" {
 		return nil // plain git is instant: nothing to hide
 	}
@@ -438,6 +438,7 @@ func (m *model) prefetch(mode string) tea.Cmd {
 			break
 		}
 		f := m.rows[i].f
+		mode := fileDiff(m.diffMode, m.prevW(), f)
 		key := previewKey(m.repo.Top, f, m.prevW(), mode)
 		if _, ok := m.renders[key]; ok {
 			continue
@@ -452,10 +453,11 @@ func (m *model) prefetch(mode string) tea.Cmd {
 
 // cancelFarthest gives up the render ahead that is least likely to be wanted:
 // one that is no longer around the cursor, else the farthest one.
-func (m *model) cancelFarthest(mode string) {
+func (m *model) cancelFarthest() {
 	keep := map[string]int{}
 	for rank, i := range m.around() {
-		keep[previewKey(m.repo.Top, m.rows[i].f, m.prevW(), mode)] = rank
+		f := m.rows[i].f
+		keep[previewKey(m.repo.Top, f, m.prevW(), fileDiff(m.diffMode, m.prevW(), f))] = rank
 	}
 	victim, worst := "", -1
 	for key := range m.inflight {
