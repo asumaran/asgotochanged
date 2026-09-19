@@ -1,0 +1,124 @@
+# gotochanged
+
+A [herdr](https://github.com/asumaran/herdr) plugin popup that lists the files
+your branch changed against its base, shows the diff of the one under the
+cursor, and opens it in your editor. The list is what a PR would ship plus
+what is still pending: committed, staged, unstaged and untracked files. It
+also runs as a plain command in any git checkout.
+
+Sibling of [asgitlog](https://github.com/asumaran/asgitlog) (same frame, same
+[hunk](https://hunk.dev) diffs) and of the goto pickers
+([gotopr](https://github.com/asumaran/gotopr),
+[gotonotes](https://github.com/asumaran/gotonotes),
+[gotosession](https://github.com/asumaran/gotosession)).
+
+```
+╭──────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ~/wt/shop/fix-cart-total  fix/cart-total -> origin/fix/cart-total (ahead 2, behind 0)        │
+├──────────────────────────────────────────────────────────────────────── 4/4 [vs origin/main] ─┤
+│ gotochanged ❯                                                                                │
+├───────────────────────────┬──────────────────────────────────────────────────────────────────┤
+│▌M  src/cart/total.ts      │  src/cart/total.ts                                      +12 -3   │
+│ A  src/cart/tax.ts        │ ▌··· 13 unchanged lines ···                                      │
+│ D  src/cart/old.ts        │ ▌14 14    const subtotal = items.reduce(sum, 0)                  │
+│ ?  notes/PLAN.md          │ ▌15    -  return subtotal                                        │
+│                           │ ▌   15 +  return subtotal + tax(subtotal)                        │
+├───────────────────────────┴─────────────────────────────────────────────────────────── 5/64 ─┤
+│ type filter • enter edit • ^t diff mode • ⇧↓ scroll diff • esc/q quit                        │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+## Requirements
+
+git and macOS; herdr >= 0.7.5 for the popup. [hunk](https://hunk.dev) renders
+the diffs (`brew install hunk`); without it the diffs are git's own, in color.
+Enter opens `nvim`, or `$EDITOR` when there is no nvim.
+
+## Install
+
+```
+herdr plugin install asumaran/gotochanged
+```
+
+The manifest's `[[build]]` runs `scripts/fetch-binary.sh`, which downloads the
+release binary matching the manifest version and falls back to `go build`
+(`GOTOCHANGED_BUILD_FROM_SOURCE=1` skips the download).
+
+Bind a key to the `open` action in `~/.config/herdr/config.toml`:
+
+```toml
+[[keys.command]]
+key = ["prefix+m", "ctrl+alt+m"]
+type = "plugin_action"
+command = "asumaran.gotochanged.open"
+description = "gotochanged (branch changes)"
+```
+
+The popup works on the repository of the pane that was focused when it opened.
+
+## Usage
+
+The filter input is focused on open, so just type; it matches the paths. One
+row per file, by path, with its status:
+
+| status | meaning |
+| --- | --- |
+| `M` | modified |
+| `A` | added (`C` copied) |
+| `D` | deleted |
+| `T` | type changed (file, symlink, submodule) |
+| `?` | untracked |
+
+The top line says which checkout and branch you are looking at. The edge under
+it shows how many files match out of the total and, in brackets, the base the
+branch is compared against.
+
+| key | action |
+| --- | --- |
+| `enter` | open the file in the editor; quitting the editor comes back to the list |
+| `ctrl+t` | diff mode: auto, side by side, single column (remembered) |
+| `↑/↓`, `ctrl+p`/`ctrl+n` | move the cursor |
+| `shift+↓`/`shift+↑`, PgDn/PgUp, mouse wheel | scroll the diff |
+| click | select a row |
+| `esc`, `q` with an empty filter | quit |
+
+As a command: `gotochanged [query]`, where `query` is the initial filter.
+
+## Behavior notes
+
+- The base is `origin/HEAD`, then `origin/main`, `origin/master` or
+  `origin/develop`, then the same names as local branches. Nothing is fetched,
+  so `origin/<base>` is as fresh as your last fetch.
+- Every diff is taken from the merge base with the base to the working tree,
+  so it covers what is committed on the branch and what is not yet. An
+  untracked file is shown whole, as an addition.
+- A rename is listed as the old path deleted and the new one added, so every
+  row is a plain path.
+- After the editor exits the list is read again: an edit can change a diff,
+  add a file or make one disappear. The cursor stays on the file it was on.
+- A deleted file has nothing to open; the popup says so and stays up.
+- Auto goes side by side when the diff area is at least 120 columns wide.
+- gotochanged only reads the repository. It never stages, commits or checks
+  anything out.
+
+## Development
+
+```bash
+go build -o gotochanged .   # local build (plugin runs ./gotochanged from the repo root)
+./gotochanged -dump         # print the changed files of the current checkout (no TTY)
+./gotochanged -dump -query total   # matches with their scores
+go vet ./... && go test ./...
+scripts/pty-check.py ./gotochanged   # end-to-end TUI check on a pty (python3 + pyte)
+herdr plugin link ~/Developer/gotochanged   # register the working copy (no build step)
+```
+
+`GOTOCHANGED_EDITOR` replaces the editor command and `GOTOCHANGED_HUNK` the
+hunk binary (`none` turns hunk off). `GOTOCHANGED_POPUP_WIDTH` /
+`GOTOCHANGED_POPUP_HEIGHT` override the popup size from the manifest.
+
+## Releasing
+
+`scripts/release.sh <X.Y.Z>` gates on a clean tree + green vet/build/test,
+generates the CHANGELOG entry from commit subjects, syncs the manifest
+version, commits, tags and publishes the GitHub release; CI then attaches
+`gotochanged-darwin-arm64`, the asset `fetch-binary.sh` downloads on installs.

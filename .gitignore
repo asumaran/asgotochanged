@@ -1,0 +1,13 @@
+# Compiled binary (built locally or in CI; attached to GitHub Releases as an asset).
+/gotochanged
+gotochanged-darwin-*
+
+# Release staging
+/dist/
+
+# Local handoff/report notes (never part of the repo).
+/HANDOFF.md
+/REPORT.md
+
+# macOS
+.DS_Store

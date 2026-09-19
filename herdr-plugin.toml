@@ -1,0 +1,23 @@
+id = "asumaran.gotochanged"
+name = "gotochanged"
+version = "0.1.0"
+min_herdr_version = "0.7.5"
+description = "Browse the files the current branch changed against its base, with a delta-rendered diff, and edit them"
+platforms = ["macos"]
+
+[[build]]
+command = ["scripts/fetch-binary.sh"]
+
+[[actions]]
+id = "open"
+title = "Open branch changes"
+contexts = ["global"]
+command = ["scripts/open-pane.sh"]
+
+[[panes]]
+id = "picker"
+title = "Changes"
+placement = "popup"
+width = "85%"
+height = "90%"
+command = ["./gotochanged"]

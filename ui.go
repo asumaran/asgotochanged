@@ -1,0 +1,643 @@
+package main
+
+// The bubbletea model: one frame (see frame.go) holding the context line
+// (which checkout and branch), the filter input, the changed files next to
+// the diff of the one under the cursor, and the help. Modeled on asgitlog and
+// the goto pickers: the input is focused before the program starts and every
+// printable key filters. Enter hands the terminal to the editor and comes
+// back to the list, like the fzf function this replaces.
+
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+)
+
+func truncate(s string, width int) string {
+	return ansi.Truncate(s, width, "…")
+}
+
+// ---- styles ----
+
+var (
+	stPrompt = lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true)
+	stDev    = lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Bold(true)
+	stSel    = lipgloss.NewStyle().Background(lipgloss.Color("8")).Bold(true)
+	stMatch  = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	stDim    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	stTitle  = lipgloss.NewStyle().Bold(true)
+	stError  = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+	stInfo   = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	stScope  = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	stCount  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	stFlash  = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+
+	// statuses, after git's own palette
+	stAdded     = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	stDeleted   = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	stModified  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	stUntracked = lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
+	stTypeChg   = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+)
+
+func statusStyle(status string) lipgloss.Style {
+	switch status {
+	case "A", "C":
+		return stAdded
+	case "D":
+		return stDeleted
+	case "M":
+		return stModified
+	case "?":
+		return stUntracked
+	}
+	return stTypeChg
+}
+
+// ---- key bindings ----
+
+type keyMap struct {
+	Up       key.Binding
+	Down     key.Binding
+	Edit     key.Binding
+	DiffMode key.Binding
+	Quit     key.Binding
+	PrevUp   key.Binding
+	PrevDown key.Binding
+	Filter   key.Binding
+}
+
+func (k keyMap) ShortHelp() []key.Binding {
+	return []key.Binding{k.Filter, k.Edit, k.DiffMode, k.PrevDown, k.Quit}
+}
+func (k keyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
+
+func defaultKeys() keyMap {
+	return keyMap{
+		Up:       key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑/^p", "up")),
+		Down:     key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓/^n", "down")),
+		Edit:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "edit")),
+		DiffMode: key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("^t", "diff mode")),
+		Quit:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc/q", "quit")),
+		PrevUp:   key.NewBinding(key.WithKeys("shift+up", "pgup"), key.WithHelp("⇧↑", "")),
+		PrevDown: key.NewBinding(key.WithKeys("shift+down", "pgdown"), key.WithHelp("⇧↓", "scroll diff")),
+		// Help-only entry: a binding without keys is disabled and the help
+		// bubble would skip it. Nothing ever matches against it.
+		Filter: key.NewBinding(key.WithKeys("type"), key.WithHelp("type", "filter")),
+	}
+}
+
+// ---- model ----
+
+// editedMsg reports that the editor gave the terminal back.
+type editedMsg struct{ err error }
+
+// reloadedMsg carries the file list read again after an edit.
+type reloadedMsg struct {
+	ch  changes
+	err error
+}
+
+type clearFlashMsg int
+
+type model struct {
+	// data
+	repo     repoInfo
+	ch       changes
+	loadErr  string
+	hunkBin  string
+	diffMode string // auto | sbs | single
+
+	rows   []fileRow
+	cursor int
+
+	// ui
+	notice string // error on the help line, cleared by the next key
+	flash  string // confirmation on the help line, cleared by a timer
+	flashN int
+	ti     textinput.Model
+	listVP viewport.Model
+	prevVP viewport.Model
+	help   help.Model
+	keys   keyMap
+	width  int
+	height int
+
+	// preview render cache
+	renders map[string]string
+	prevKey string
+	// cancel stops the render in flight when the selection moves on.
+	cancel context.CancelFunc
+}
+
+func newModel(repo repoInfo, ch changes, loadErr, diffMode, hunkBin, query string) model {
+	m := model{
+		repo:     repo,
+		ch:       ch,
+		loadErr:  loadErr,
+		hunkBin:  hunkBin,
+		diffMode: diffMode,
+		ti:       newFilterInput(),
+		listVP:   viewport.New(viewport.WithWidth(30), viewport.WithHeight(16)),
+		prevVP:   viewport.New(viewport.WithWidth(60), viewport.WithHeight(16)),
+		help:     help.New(),
+		keys:     defaultKeys(),
+		renders:  map[string]string{},
+		width:    94,
+		height:   24,
+	}
+	m.ti.SetValue(query)
+	m.ti.CursorEnd()
+	m.applyFilter()
+	m.resize()
+	m.renderList()
+	return m
+}
+
+// newFilterInput builds the focused filter textinput with the gotochanged
+// prompt. The prompt string already carries its colors, so the prompt style
+// is left empty.
+func newFilterInput() textinput.Model {
+	ti := textinput.New()
+	ti.Prompt = promptText()
+	st := ti.Styles()
+	st.Focused.Prompt = lipgloss.NewStyle()
+	st.Blurred.Prompt = lipgloss.NewStyle()
+	ti.SetStyles(st)
+	ti.Focus()
+	return ti
+}
+
+// promptText builds the textinput prompt, with an orange "(dev)" marker on
+// non-release builds.
+func promptText() string {
+	if strings.HasPrefix(version, "v") {
+		return stPrompt.Render("gotochanged ❯ ")
+	}
+	return stPrompt.Render("gotochanged (") + stDev.Render("dev") + stPrompt.Render(") ❯ ")
+}
+
+func (m *model) current() *changedFile {
+	if m.cursor >= 0 && m.cursor < len(m.rows) {
+		return &m.rows[m.cursor].f
+	}
+	return nil
+}
+
+// ---- layout ----
+
+// innerW is the width inside the frame's sides.
+func (m *model) innerW() int { return max(20, m.width-2) }
+
+// listW is the list's share of the main section: paths are short next to a
+// diff, which wants every column it can get.
+func (m *model) listW() int { return max(24, m.innerW()*30/100) }
+
+// detailsW is the preview's area, including the cell of padding on each
+// side; prevW is the text width inside it.
+func (m *model) detailsW() int { return max(12, m.innerW()-1-m.listW()) }
+func (m *model) prevW() int    { return max(10, m.detailsW()-2) }
+
+// bodyH is the height of the main section: everything but the frame's own
+// lines (with the context line) and the help.
+func (m *model) bodyH() int { return max(1, m.height-frameRows(true)-1) }
+
+func (m *model) resize() {
+	m.listVP.SetWidth(m.listW())
+	m.listVP.SetHeight(m.bodyH())
+	m.prevVP.SetWidth(m.prevW())
+	m.prevVP.SetHeight(m.bodyH())
+	m.help.SetWidth(max(0, m.width-4))
+}
+
+// ---- filtering ----
+
+func (m *model) applyFilter() {
+	q := m.ti.Value()
+	m.rows = filterFiles(m.ch.files, q)
+	m.cursor = 0
+	if q != "" {
+		m.cursor = bestIndex(len(m.rows), func(i int) int { return m.rows[i].score })
+	}
+	if len(m.rows) == 0 {
+		m.cursor = -1
+	}
+}
+
+func (m *model) keepCursorOn(path string) {
+	for i, r := range m.rows {
+		if r.f.path == path {
+			m.cursor = i
+			return
+		}
+	}
+}
+
+// refilter re-applies the query. With an empty query, or after the list was
+// read again, the cursor stays on the file it was on.
+func (m *model) refilter(keep bool) {
+	path := ""
+	if f := m.current(); f != nil {
+		path = f.path
+	}
+	m.applyFilter()
+	if keep || m.ti.Value() == "" {
+		m.keepCursorOn(path)
+	}
+}
+
+// ---- list rendering ----
+
+func (m *model) renderList() {
+	w := m.listW()
+	var b strings.Builder
+	for i, r := range m.rows {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(m.fileLine(r, i == m.cursor, w))
+	}
+	m.listVP.SetContent(b.String())
+	m.ensureVisible()
+}
+
+// fileLine renders one row: cursor bar, status letter, path. The selected row
+// is padded to the full width before styling so its background spans the
+// whole column.
+func (m *model) fileLine(r fileRow, selected bool, width int) string {
+	pathW := max(8, width-4)
+	if selected {
+		return stSel.Render(fit("▌"+r.f.status+"  "+pathCells(r.f.path, nil, pathW, false), width))
+	}
+	return " " + statusStyle(r.f.status).Render(r.f.status) + "  " + pathCells(r.f.path, r.idx, pathW, true)
+}
+
+// pathCells fits a path into width. A path that does not fit loses its head,
+// not its tail, so the file name is always visible. The directory part is
+// dimmed and the matched bytes highlighted when styled is set.
+func pathCells(path string, idx []int, width int, styled bool) string {
+	type cell struct {
+		r   rune
+		off int
+	}
+	cells := make([]cell, 0, len(path))
+	for off, r := range path {
+		cells = append(cells, cell{r, off})
+	}
+	cut := false
+	if len(cells) > width && width > 1 {
+		cells = cells[len(cells)-(width-1):]
+		cut = true
+	}
+	dirEnd := strings.LastIndexByte(path, '/') + 1 // bytes before it are the directory
+	matched := make(map[int]bool, len(idx))
+	for _, i := range idx {
+		matched[i] = true
+	}
+	var b, run strings.Builder
+	runDim := false
+	flush := func() {
+		if run.Len() == 0 {
+			return
+		}
+		if styled && runDim {
+			b.WriteString(stDim.Render(run.String()))
+		} else {
+			b.WriteString(run.String())
+		}
+		run.Reset()
+	}
+	if cut {
+		runDim = true
+		run.WriteString("…")
+	}
+	for _, c := range cells {
+		if styled && matched[c.off] {
+			flush()
+			b.WriteString(stMatch.Render(string(c.r)))
+			continue
+		}
+		if d := c.off < dirEnd; d != runDim {
+			flush()
+			runDim = d
+		}
+		run.WriteRune(c.r)
+	}
+	flush()
+	return b.String()
+}
+
+func (m *model) setCursor(i int) {
+	if i < 0 || i >= len(m.rows) {
+		return
+	}
+	m.cursor = i
+}
+
+func (m *model) ensureVisible() {
+	h, c := m.listVP.Height(), m.cursor
+	if h <= 0 || c < 0 {
+		m.listVP.SetYOffset(0)
+		return
+	}
+	if c < m.listVP.YOffset() {
+		m.listVP.SetYOffset(c)
+	} else if c >= m.listVP.YOffset()+h {
+		m.listVP.SetYOffset(c - h + 1)
+	}
+}
+
+// ---- preview ----
+
+// updatePreview refreshes the right column with the diff of the file under
+// the cursor, rendered off the update loop and cached.
+func (m *model) updatePreview() tea.Cmd {
+	f := m.current()
+	if f == nil {
+		m.prevKey = ""
+		m.prevVP.SetContent("")
+		return nil
+	}
+	mode := effectiveDiff(m.diffMode, m.prevW())
+	key := previewKey(m.repo.Top, *f, m.prevW(), mode)
+	if key == m.prevKey {
+		return nil
+	}
+	if m.cancel != nil {
+		m.cancel() // the render of the file the cursor just left
+		m.cancel = nil
+	}
+	m.prevKey = key
+	m.prevVP.GotoTop()
+	if c, ok := m.renders[key]; ok {
+		m.prevVP.SetContent(c)
+		return nil
+	}
+	m.prevVP.SetContent(stDim.Render("rendering…"))
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancel = cancel
+	return renderPreviewCmd(ctx, m.repo.Top, m.ch.mergeBase, *f, key, m.prevW(), mode, m.hunkBin)
+}
+
+// flashFor is how long a confirmation stays on the help line.
+const flashFor = 1500 * time.Millisecond
+
+func (m *model) setFlash(s string) tea.Cmd {
+	m.flash = s
+	m.flashN++
+	n := m.flashN
+	return tea.Tick(flashFor, func(time.Time) tea.Msg { return clearFlashMsg(n) })
+}
+
+// ---- editing ----
+
+// editorArgv is the editor command. GOTOCHANGED_EDITOR replaces it; the
+// default is nvim, what the fzf function opened, then $EDITOR, then vi.
+func editorArgv() []string {
+	if f := strings.Fields(os.Getenv("GOTOCHANGED_EDITOR")); len(f) > 0 {
+		return f
+	}
+	if _, err := exec.LookPath("nvim"); err == nil {
+		return []string{"nvim"}
+	}
+	if f := strings.Fields(os.Getenv("EDITOR")); len(f) > 0 {
+		return f
+	}
+	return []string{"vi"}
+}
+
+// edit hands the terminal to the editor on the file under the cursor. Quitting
+// the editor comes back to the list. A deleted file has nothing to open.
+func (m *model) edit() tea.Cmd {
+	f := m.current()
+	if f == nil {
+		return nil
+	}
+	path := filepath.Join(m.repo.Top, f.path)
+	if _, err := os.Stat(path); err != nil {
+		m.notice = "nothing to edit: " + f.path + " does not exist in the work tree"
+		return nil
+	}
+	argv := append(editorArgv(), path)
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Dir = m.repo.Top
+	return tea.ExecProcess(cmd, func(err error) tea.Msg { return editedMsg{err} })
+}
+
+func reloadCmd() tea.Cmd {
+	return func() tea.Msg {
+		ch, err := loadChanges(context.Background())
+		return reloadedMsg{ch, err}
+	}
+}
+
+// ---- bubbletea ----
+
+func (m model) Init() tea.Cmd {
+	return tea.Batch(textinput.Blink, m.updatePreview())
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width, m.height = msg.Width, msg.Height
+		m.resize()
+		m.renderList()
+		return m, m.updatePreview()
+
+	case previewMsg:
+		if msg.cancelled {
+			return m, nil
+		}
+		if !msg.partial {
+			m.renders[msg.key] = msg.content
+		}
+		if msg.key == m.prevKey {
+			// The final frame replaces the partial one in place: same lines,
+			// now highlighted, so the scroll position is kept.
+			y := m.prevVP.YOffset()
+			m.prevVP.SetContent(msg.content)
+			m.prevVP.SetYOffset(y)
+		}
+		return m, msg.next
+
+	case editedMsg:
+		if msg.err != nil {
+			m.notice = "editor: " + msg.err.Error()
+		}
+		// The edit may have changed the diff, or the list itself.
+		return m, reloadCmd()
+
+	case reloadedMsg:
+		if msg.err != nil {
+			m.notice = msg.err.Error()
+			return m, nil
+		}
+		m.ch = msg.ch
+		m.refilter(true)
+		m.renderList()
+		m.prevKey = ""
+		return m, m.updatePreview()
+
+	case clearFlashMsg:
+		if int(msg) == m.flashN {
+			m.flash = ""
+		}
+		return m, nil
+
+	case tea.KeyPressMsg:
+		return m.handleKey(msg)
+
+	case tea.MouseWheelMsg:
+		// The wheel always scrolls the diff, wherever the pointer is; the list
+		// is driven by the keys and by clicking a row (see gotopr).
+		m.prevVP, _ = m.prevVP.Update(msg)
+		return m, nil
+
+	case tea.MouseClickMsg:
+		return m.handleClick(msg)
+
+	default:
+		var cmd tea.Cmd
+		m.ti, cmd = m.ti.Update(msg)
+		return m, cmd
+	}
+}
+
+func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	m.notice = ""
+	switch {
+	case msg.String() == "ctrl+c":
+		return m, tea.Quit
+	case msg.String() == "q" && m.ti.Value() == "":
+		// q quits only while the filter is empty; otherwise it is text.
+		return m, tea.Quit
+	case key.Matches(msg, m.keys.Quit):
+		return m, tea.Quit
+	case key.Matches(msg, m.keys.Edit):
+		return m, m.edit()
+	case key.Matches(msg, m.keys.DiffMode):
+		m.diffMode = nextDiffMode(m.diffMode)
+		saveDiffMode(m.diffMode)
+		return m, tea.Batch(m.setFlash("diff: "+diffLabel(m.diffMode, m.prevW())), m.updatePreview())
+	case key.Matches(msg, m.keys.Up):
+		m.setCursor(m.cursor - 1)
+		m.renderList()
+		return m, m.updatePreview()
+	case key.Matches(msg, m.keys.Down):
+		m.setCursor(m.cursor + 1)
+		m.renderList()
+		return m, m.updatePreview()
+	case key.Matches(msg, m.keys.PrevUp):
+		m.prevVP.ScrollUp(3)
+		return m, nil
+	case key.Matches(msg, m.keys.PrevDown):
+		m.prevVP.ScrollDown(3)
+		return m, nil
+	}
+
+	before := m.ti.Value()
+	var cmd tea.Cmd
+	m.ti, cmd = m.ti.Update(msg)
+	if m.ti.Value() != before {
+		m.refilter(false)
+		m.renderList()
+	}
+	return m, tea.Batch(cmd, m.updatePreview())
+}
+
+// handleClick moves the cursor to the row under a left click on the list. It
+// never opens the editor: that stays on enter.
+func (m model) handleClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
+	if msg.Button != tea.MouseLeft || msg.X < 1 || msg.X > m.listW() ||
+		msg.Y < listY(true) || msg.Y >= listY(true)+m.bodyH() {
+		return m, nil
+	}
+	i := msg.Y - listY(true) + m.listVP.YOffset()
+	if i < 0 || i >= len(m.rows) || i == m.cursor {
+		return m, nil
+	}
+	m.setCursor(i)
+	m.renderList()
+	return m, m.updatePreview()
+}
+
+func (m model) View() tea.View {
+	v := tea.NewView(m.render())
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
+}
+
+// render stacks the sections in one frame (see frame.go). The context line is
+// the one thing the rest of the screen cannot say: which checkout and branch.
+func (m model) render() string {
+	w := m.width
+	out := frameHead(w, stInfo.Render(m.repo.line(max(0, w-4))), m.counter(), m.ti.View())
+	out = append(out, splitMain(m.listLines(), strings.Split(m.prevVP.View(), "\n"),
+		m.listW(), m.detailsW(), scrollPos(&m.prevVP))...)
+	out = append(out, framed(w, m.footer()), hline(w, "╰", "╯", "", ""))
+	return strings.Join(out, "\n")
+}
+
+// counter is the matches/total count, followed by what the branch is compared
+// against (the scope, as in asgitlog).
+func (m model) counter() string {
+	s := stCount.Render(strconv.Itoa(len(m.rows)) + "/" + strconv.Itoa(len(m.ch.files)))
+	if m.ch.base != "" {
+		s += " " + stScope.Render("[vs "+truncate(m.ch.base, max(10, m.width/3))+"]")
+	}
+	return s
+}
+
+// listLines is the list as exactly bodyH lines of listW cells.
+func (m model) listLines() []string {
+	lines := strings.Split(m.leftColumn(), "\n")
+	for len(lines) < m.bodyH() {
+		lines = append(lines, "")
+	}
+	lines = lines[:m.bodyH()]
+	for i, l := range lines {
+		lines[i] = fit(l, m.listW())
+	}
+	return lines
+}
+
+// leftColumn is the list, or the reason there is nothing to list.
+func (m model) leftColumn() string {
+	if len(m.rows) > 0 {
+		return m.listVP.View()
+	}
+	msg := "No matches"
+	switch {
+	case m.loadErr != "":
+		msg = m.loadErr
+	case m.ti.Value() != "":
+	default:
+		msg = "No changes vs " + m.ch.base
+	}
+	return stDim.Render(truncate(" "+msg, m.listW()))
+}
+
+// footer is the key help, or a notice or confirmation while one is showing.
+func (m model) footer() string {
+	switch {
+	case m.notice != "":
+		return stError.Render(truncate(m.notice, max(0, m.width-4)))
+	case m.flash != "":
+		return stFlash.Render(truncate(m.flash, max(0, m.width-4)))
+	}
+	return truncate(m.help.View(m.keys), max(0, m.width-4))
+}
