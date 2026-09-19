@@ -1,3 +1,7 @@
+## v0.3.0 (2026-09-19)
+
+* refactor: rename gotochanged to asgotochanged (5132a7d)
+
 ## v0.2.0 (2026-09-19)
 
 * feat(mouse): move the selection with the wheel over the list (53a8032)
