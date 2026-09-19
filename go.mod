@@ -1,4 +1,4 @@
-module github.com/asumaran/gotochanged
+module github.com/asumaran/asgotochanged
 
 go 1.25.8
 

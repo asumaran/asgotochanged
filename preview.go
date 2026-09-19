@@ -79,10 +79,10 @@ func nextDiffMode(mode string) string {
 	return diffAuto
 }
 
-// hunkPath resolves hunk. GOTOCHANGED_HUNK replaces it, and "none" turns it
+// hunkPath resolves hunk. ASGOTOCHANGED_HUNK replaces it, and "none" turns it
 // off (the pty driver does, so its frames do not depend on hunk's looks).
 func hunkPath() string {
-	switch b := os.Getenv("GOTOCHANGED_HUNK"); b {
+	switch b := os.Getenv("ASGOTOCHANGED_HUNK"); b {
 	case "":
 	case "none":
 		return ""

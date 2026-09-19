@@ -28,7 +28,7 @@ const (
 )
 
 // diskCache stores gzipped renders under dir, one file per key. A nil cache
-// (tests, GOTOCHANGED_NO_CACHE) stores nothing.
+// (tests, ASGOTOCHANGED_NO_CACHE) stores nothing.
 type diskCache struct {
 	dir string
 
@@ -39,7 +39,7 @@ type diskCache struct {
 // renderCache is opened by main(); nil keeps nothing.
 var renderCache *diskCache
 
-// cacheDir is ${XDG_CACHE_HOME:-~/.cache}/gotochanged/renders.
+// cacheDir is ${XDG_CACHE_HOME:-~/.cache}/asgotochanged/renders.
 func cacheDir() string {
 	base := os.Getenv("XDG_CACHE_HOME")
 	if base == "" {
@@ -49,12 +49,12 @@ func cacheDir() string {
 		}
 		base = filepath.Join(home, ".cache")
 	}
-	return filepath.Join(base, "gotochanged", "renders")
+	return filepath.Join(base, "asgotochanged", "renders")
 }
 
 func openDiskCache() *diskCache {
 	dir := cacheDir()
-	if dir == "" || os.Getenv("GOTOCHANGED_NO_CACHE") != "" {
+	if dir == "" || os.Getenv("ASGOTOCHANGED_NO_CACHE") != "" {
 		return nil
 	}
 	return &diskCache{dir: dir}

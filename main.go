@@ -1,4 +1,4 @@
-// gotochanged: a herdr plugin popup that lists the files the current branch
+// asgotochanged: a herdr plugin popup that lists the files the current branch
 // changed against its base (what a PR would ship, plus what is still pending
 // and untracked), shows the diff of the one under the cursor rendered by hunk,
 // and opens it in the editor. It also runs as a plain command in any git
@@ -30,7 +30,7 @@ func main() {
 	dump := flag.Bool("dump", false, "print the changed files (no TUI)")
 	query := flag.String("query", "", "initial filter; with -dump, print the matches and their scores")
 	flag.Usage = func() {
-		fmt.Fprintln(flag.CommandLine.Output(), "usage: gotochanged [flags] [query]")
+		fmt.Fprintln(flag.CommandLine.Output(), "usage: asgotochanged [flags] [query]")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -54,7 +54,7 @@ func main() {
 
 	if *dump {
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "gotochanged:", err)
+			fmt.Fprintln(os.Stderr, "asgotochanged:", err)
 			os.Exit(1)
 		}
 		runDump(repo, ch, *query, time.Since(start))
@@ -79,7 +79,7 @@ func main() {
 // fatal reports why there is nothing to show. In a popup the pane closes the
 // instant the process exits, so the message is held until a key is pressed.
 func fatal(msg string) {
-	fmt.Fprintln(os.Stderr, "gotochanged:", msg)
+	fmt.Fprintln(os.Stderr, "asgotochanged:", msg)
 	if os.Getenv("HERDR_PLUGIN_ENTRYPOINT_ID") != "" {
 		fmt.Fprint(os.Stderr, "press enter to close…")
 		_, _ = fmt.Scanln()
@@ -94,7 +94,7 @@ func cwd() string {
 
 // enterPaneCwd moves to the directory of the pane that was focused when the
 // popup opened. herdr starts plugin panes in the plugin's own directory (the
-// manifest's "./gotochanged" is resolved against it, so the pane cannot simply
+// manifest's "./asgotochanged" is resolved against it, so the pane cannot simply
 // be opened with another cwd) and describes the invocation, focused pane
 // included, in HERDR_PLUGIN_CONTEXT_JSON.
 func enterPaneCwd() {
@@ -129,7 +129,7 @@ func stateDir() string {
 			base = filepath.Join(h, ".config")
 		}
 	}
-	return filepath.Join(base, "herdr", "gotochanged-tui")
+	return filepath.Join(base, "herdr", "asgotochanged-tui")
 }
 
 func loadDiffMode() string {

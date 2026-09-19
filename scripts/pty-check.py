@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""End-to-end TUI check for gotochanged without a real terminal.
+"""End-to-end TUI check for asgotochanged without a real terminal.
 
 Spawns the binary on a pty, answers the terminal queries bubbletea sends,
 replays keystrokes and asserts on frames rendered with pyte. Everything runs
 in a throwaway sandbox: a fake HOME, a real git checkout with a local `main`
 as the base and a feature branch (modified, added, deleted, pending and
-untracked files), hunk turned off (GOTOCHANGED_HUNK=none: git's own diff, so
+untracked files), hunk turned off (ASGOTOCHANGED_HUNK=none: git's own diff, so
 the frames do not depend on hunk's looks) and a stub instead of the editor
-(GOTOCHANGED_EDITOR) that logs the path and appends a line to the file. It
+(ASGOTOCHANGED_EDITOR) that logs the path and appends a line to the file. It
 never touches a real repository and never opens an editor.
 
-Usage: scripts/pty-check.py ./gotochanged   (needs python3 + pyte)
+Usage: scripts/pty-check.py ./asgotochanged   (needs python3 + pyte)
 """
-NAME, ROWS, COLS = "gotochanged", 18, 150
+NAME, ROWS, COLS = "asgotochanged", 18, 150
 import atexit, fcntl, json, os, pty, select, shutil, signal, struct, subprocess, sys, tempfile, termios, time
 import pyte
 
@@ -135,8 +135,8 @@ editor = write(os.path.join(SANDBOX, "editor"),
                '#!/bin/sh\nprintf "%%s\\n" "$1" >> "%s"\nprintf "// edited\\n" >> "$1"\n' % edit_log, 0o755)
 
 def session(args=()):
-    env = dict(git_env, TERM="xterm-256color", COLORTERM="truecolor", GOTOCHANGED_HUNK="none",
-               GOTOCHANGED_EDITOR=editor, XDG_CONFIG_HOME=os.path.join(home, ".config"),
+    env = dict(git_env, TERM="xterm-256color", COLORTERM="truecolor", ASGOTOCHANGED_HUNK="none",
+               ASGOTOCHANGED_EDITOR=editor, XDG_CONFIG_HOME=os.path.join(home, ".config"),
                XDG_CACHE_HOME=os.path.join(home, ".cache"))
     for k in ("HERDR_PLUGIN_STATE_DIR", "HERDR_PLUGIN_ENTRYPOINT_ID", "HERDR_PLUGIN_CONTEXT_JSON"):
         env.pop(k, None)
@@ -155,12 +155,12 @@ def right(f): return "\n".join(l[listw() + 3:-1].rstrip() for l in f[5:-3])
 def prompt(f): return f[3].strip("│ ").rstrip()
 def counter(f): return f[2].strip("├┤─ ")
 
-print("== gotochanged pty driver (%dx%d) ==" % (COLS, ROWS))
+print("== asgotochanged pty driver (%dx%d) ==" % (COLS, ROWS))
 
 # ---------- run 1: list, context, diff, filter, edit and come back ----------
 s = session()
-f = s.start("gotochanged (dev) ❯"); dump("open", f)
-check(prompt(f) == "gotochanged (dev) ❯", "prompt line is clean: %r" % f[3])
+f = s.start("asgotochanged (dev) ❯"); dump("open", f)
+check(prompt(f) == "asgotochanged (dev) ❯", "prompt line is clean: %r" % f[3])
 check(b"\x1b[?1049h" in s.raw, "program entered the alt screen")
 check("~/wt/shop/fix-cart-total  fix/cart-total" in f[1], "the context line names the checkout and the branch: %r" % f[1])
 check(counter(f) == "4/4 [vs main]", "counter and base on the edge: %r" % counter(f))
@@ -173,7 +173,7 @@ check("-export const total = (items) => items.length" in right(f) and "+export c
       "the diff is against the merge base")
 f = s.send(ENTER, 1.2); dump("after the editor", f)
 check(edited() == [os.path.join(repo, "src", "total.ts")], "enter hands the file to the editor: %r" % edited())
-check(s.proc.poll() is None and prompt(f) == "gotochanged (dev) ❯ total", "quitting the editor comes back to the list: %r" % f[3])
+check(s.proc.poll() is None and prompt(f) == "asgotochanged (dev) ❯ total", "quitting the editor comes back to the list: %r" % f[3])
 check("+// edited" in right(f), "the diff is rendered again after the edit")
 
 # a deleted file has nothing to edit
@@ -189,8 +189,8 @@ check(s.finish() == 0, "esc quits")
 
 # ---------- run 2: mouse, initial query, q ----------
 s = session(args=("tax",))
-f = s.start("gotochanged (dev) ❯")
-check(prompt(f) == "gotochanged (dev) ❯ tax" and left(f) == ["▌A  src/tax.ts"], "a positional argument is the initial filter: %r" % left(f))
+f = s.start("asgotochanged (dev) ❯")
+check(prompt(f) == "asgotochanged (dev) ❯ tax" and left(f) == ["▌A  src/tax.ts"], "a positional argument is the initial filter: %r" % left(f))
 for _ in range(3): s.send(b"\x7f", 0.1)
 f = s.send(b"\x1b[<0;5;8M\x1b[<0;5;8m", 0.6)   # SGR press+release on the third list line
 check(left(f)[2].startswith("▌A  src/tax.ts") and edited() == [], "a click selects the row and opens nothing: %r" % left(f))
@@ -199,7 +199,7 @@ check(s.finish() == 0, "q quits with an empty filter")
 
 # ---------- run 3: the divider moves and stays where it was left ----------
 s = session()
-f = s.start("gotochanged (dev) ❯"); at = divider(f)
+f = s.start("asgotochanged (dev) ❯"); at = divider(f)
 f = s.send(b"\x1b[1;2C", 0.6); grown = divider(f)   # shift+right
 check(grown > at and all(len(l) == COLS for l in f), "shift+right grows the list: %d -> %d" % (at, grown))
 f = s.send(b"\x1b[1;2D", 0.6)                        # shift+left
@@ -207,7 +207,7 @@ check(divider(f) == at, "shift+left shrinks it back: %d" % divider(f))
 s.send(b"\x1b[1;2C", 0.6)
 os.write(s.master, ESC); s.pump(0.4); s.finish()
 s = session()
-f = s.start("gotochanged (dev) ❯")
+f = s.start("asgotochanged (dev) ❯")
 check(divider(f) == grown, "the next run opens with the same split: %d" % divider(f))
 s.send(b"\x1b[1;2D", 0.6)
 os.write(s.master, ESC); s.pump(0.4); s.finish()
@@ -215,7 +215,7 @@ os.write(s.master, ESC); s.pump(0.4); s.finish()
 # ---------- run 4: nothing changed on the base branch ----------
 git("stash", "-q", "-u"); git("checkout", "-q", "main")
 s = session()
-f = s.start("gotochanged (dev) ❯"); dump("on the base", f)
+f = s.start("asgotochanged (dev) ❯"); dump("on the base", f)
 check(counter(f) == "0/0 [vs main]" and "No changes vs main" in "\n".join(f), "the base branch has nothing to list")
 os.write(s.master, ESC); s.pump(0.4); s.finish()
 

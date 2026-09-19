@@ -4,22 +4,22 @@ Guidance for working in this repository.
 
 ## What this is
 
-`gotochanged` is a herdr plugin popup that lists the files the current branch
+`asgotochanged` is a herdr plugin popup that lists the files the current branch
 changed against its base (committed, staged, unstaged and untracked: what a PR
 would ship plus what is pending), previews the diff of the file under the
 cursor rendered by hunk, and opens it in the editor, coming back to the list
 when the editor exits. It is the Go port of `fm`, a zsh + fzf function from the
 user's dotfiles, and the terminal twin of the `aschanged` VS Code extension.
 Same frame and diff renderer as `asgitlog`, same filtering and lifecycle as the
-goto pickers.
+asgoto pickers.
 
 It only reads the repository. It never stages, commits, stashes or checks
 anything out; what it writes is its own: the chosen diff mode, the whitespace
 setting and a cache of rendered diffs.
 
-Distributed as a herdr plugin (`herdr plugin install asumaran/gotochanged`;
+Distributed as a herdr plugin (`herdr plugin install asumaran/asgotochanged`;
 the manifest's `[[build]]` runs `scripts/fetch-binary.sh`). Each GitHub Release
-attaches `gotochanged-darwin-arm64`. There is no published library.
+attaches `asgotochanged-darwin-arm64`. There is no published library.
 
 ## Stack & layout
 
@@ -38,8 +38,8 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
 - `frame.go` — the single-frame layout shared by the family: `hline`, `fit`,
   `framed`, `frameHead`, `splitMain`, `scrollPos` and the section rows
   (`mainY`, `listY`, `frameRows`, each with or without the optional context
-  line). Copied, not imported: the same file ships in gotosession, gotonotes,
-  gotopr and gotojira. A pull request only needs to change it here; the
+  line). Copied, not imported: the same file ships in asgotosession, asgotonotes,
+  asgotopr and asgotoissues. A pull request only needs to change it here; the
   maintainer ports the change to the other copies.
 - `hunk.go` — hunk as the diff renderer, copied from asgitlog: hunk is a
   full-screen TUI with no static output, so it runs on a tall pty behind a
@@ -54,7 +54,7 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
   patch they were made from (scheme copied from asgitlog).
 - `split.go` — the divider between the list and the preview: `loadSplit`,
   `saveSplit`, `stepSplit`, `splitWidths`. The file is copied, not imported:
-  the same one ships in gotosession, gotonotes, gotopr and gotojira (all under
+  the same one ships in asgotosession, asgotonotes, asgotopr and asgotoissues (all under
   github.com/asumaran), and there is no shared library. A pull request only
   needs to change it here; the maintainer ports the change to the other copies.
 - `ui.go` — the bubbletea model/Update/View, editing through
@@ -64,15 +64,15 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
 ## Build & run
 
 ```bash
-go build -o gotochanged .    # plugin runs ./gotochanged from the repo root
-./gotochanged -dump          # changed files of the current checkout, no TTY
-./gotochanged -dump -query x # matches with scores
+go build -o asgotochanged .    # plugin runs ./asgotochanged from the repo root
+./asgotochanged -dump          # changed files of the current checkout, no TTY
+./asgotochanged -dump -query x # matches with scores
 go vet ./... && go test ./...
-herdr plugin link ~/Developer/gotochanged   # link does NOT run [[build]]; go build yourself
+herdr plugin link ~/Developer/asgotochanged   # link does NOT run [[build]]; go build yourself
 ```
 
 Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
-`asumaran.gotochanged.open` → `scripts/open-pane.sh` → `herdr plugin pane open`.
+`asumaran.asgotochanged.open` → `scripts/open-pane.sh` → `herdr plugin pane open`.
 
 ## Behaviour / decisions
 
@@ -110,7 +110,7 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
 - **Diff**: `git diff --no-color <merge-base> -- <path>` (untracked: `git diff
   --no-index -- /dev/null <path>`, whose exit status 1 means "there are
   differences", not an error) rendered by hunk in `split` or `unified` mode.
-  Without hunk (`GOTOCHANGED_HUNK=none`, or not installed) the same diff with
+  Without hunk (`ASGOTOCHANGED_HUNK=none`, or not installed) the same diff with
   `--color=always`. delta is deliberately not used: the family renders diffs
   with hunk.
 - **Renders are two-stage, and that repaint is kept off the screen**: hunk
@@ -125,7 +125,7 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   back, so the window fills a few at a time and moving through the list shows
   finished diffs. The selection never waits for a slot: `cancelFarthest` gives
   up a render ahead for it. **Disk cache** (`cache.go`,
-  `~/.cache/gotochanged/renders`, `GOTOCHANGED_NO_CACHE` turns it off): a
+  `~/.cache/asgotochanged/renders`, `ASGOTOCHANGED_NO_CACHE` turns it off): a
   finished render is stored gzipped under the sha256 of hunk's fingerprint
   (binary + config files), width, mode and THE PATCH ITSELF, so an edited file
   simply misses and nothing can go stale; a hit returns the highlighted frame
@@ -143,13 +143,13 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   list, which `-w` does not change.
 - **Diff mode**: auto / side by side / single column on `ctrl+t`, saved in the
   plugin state dir (`HERDR_PLUGIN_STATE_DIR`, standalone
-  `~/.config/herdr/gotochanged-tui`). Auto goes side by side from 120 columns
+  `~/.config/herdr/asgotochanged-tui`). Auto goes side by side from 120 columns
   of diff area, asgitlog's threshold, except for a file that was only added or
   only deleted (`A`, `D`, `?`): side by side would leave one half empty and
   cut the other at the middle, so those go single column (`fileDiff`). An
   explicit mode is obeyed whatever the file.
 - **Editing**: `tea.ExecProcess` hands the terminal to the editor
-  (`GOTOCHANGED_EDITOR`, else `nvim`, else `$EDITOR`, else `vi`) with the
+  (`ASGOTOCHANGED_EDITOR`, else `nvim`, else `$EDITOR`, else `vi`) with the
   absolute path, cwd at the top. When it exits the list is loaded again
   (`reloadCmd`): the edit can change a diff, add or remove rows. The cursor
   stays on the same path (`refilter(true)`). A file that does not exist in the
@@ -180,10 +180,10 @@ persistence, editing a deleted file, reload keeping the cursor, the frame
 geometry, clicks.
 
 For end-to-end verification without a TTY, `scripts/pty-check.py
-./gotochanged` (python3 + `pyte`) spawns the binary on a pty, answers the
+./asgotochanged` (python3 + `pyte`) spawns the binary on a pty, answers the
 terminal queries, replays keystrokes and asserts on pyte-rendered frames, in a
 throwaway sandbox (fake `HOME`, a real git checkout, hunk off, a stub as
-`GOTOCHANGED_EDITOR` that logs the path and appends a line to the file). The
+`ASGOTOCHANGED_EDITOR` that logs the path and appends a line to the file). The
 v2 renderer repaints with scroll regions, which pyte ignores, so the driver
 forces a full redraw (pty resize + SIGWINCH) before reading a frame.
 
@@ -201,5 +201,5 @@ forces a full redraw (pty resize + SIGWINCH) before reading a frame.
 `scripts/release.sh <X.Y.Z>` — clean-tree + vet/build/test gate, CHANGELOG
 generation from commit subjects, manifest version sync, commit + tag + GitHub
 release; CI (`.github/workflows/release.yml`) attaches
-`gotochanged-darwin-arm64`. Releasing never touches the linked plugin's
-`./gotochanged`; rebuild locally to keep testing dev code.
+`asgotochanged-darwin-arm64`. Releasing never touches the linked plugin's
+`./asgotochanged`; rebuild locally to keep testing dev code.

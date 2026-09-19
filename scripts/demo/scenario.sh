@@ -1,21 +1,21 @@
 # shellcheck shell=bash
-# scenario.sh — demo session for the README GIF, run by `herdr-demo record`
-# (asumaran/herdr-demokit). Sourced by the kit; the helpers used below
+# scenario.sh — demo session for the README GIF, run by `asdemo record`
+# (asumaran/asdemokit). Sourced by the kit; the helpers used below
 # (demo_*) come from it.
 
-DEMO_SESSION="gotochangeddemo"
+DEMO_SESSION="asgotochangeddemo"
 DEMO_OUT="docs/demo.gif"
 
-# gotochanged lists what the branch of the focused pane changed. No personal
+# asgotochanged lists what the branch of the focused pane changed. No personal
 # checkout has a branch worth showing (the shopnest worktrees change one file
 # each), so the demo works on a throwaway clone of shopnest with a scripted
 # feature branch: committed, pending, deleted and untracked files. Nothing in
 # the real repository is touched.
 DEMO_SOURCE_REPO="$HOME/Developer/shopnest"
-DEMO_CLONE="$HOME/.cache/gotochanged-demo/shopnest"
+DEMO_CLONE="$HOME/.cache/asgotochanged-demo/shopnest"
 DEMO_START_CWD="$DEMO_CLONE"
 # Enter opens the editor on camera: a bare nvim, without the user's plugins.
-DEMO_SESSION_ENV=("GOTOCHANGED_EDITOR=nvim --clean")
+DEMO_SESSION_ENV=("ASGOTOCHANGED_EDITOR=nvim --clean")
 
 # Same sidebar as the other demos: personal repos only.
 REPOS=(
@@ -27,7 +27,7 @@ REPOS=(
 demo_build() {
   local version
   version="$(sed -n 's/^version = "\(.*\)"/\1/p' herdr-plugin.toml)"
-  go build -ldflags "-X main.version=v${version}" -o gotochanged .
+  go build -ldflags "-X main.version=v${version}" -o asgotochanged .
 
   rm -rf "$DEMO_CLONE"
   mkdir -p "$(dirname "$DEMO_CLONE")"
@@ -74,8 +74,8 @@ TS
 }
 
 demo_teardown() {
-  go build -o gotochanged . 2>/dev/null || true
-  rm -rf "$HOME/.cache/gotochanged-demo"
+  go build -o asgotochanged . 2>/dev/null || true
+  rm -rf "$HOME/.cache/asgotochanged-demo"
 }
 
 demo_setup() {

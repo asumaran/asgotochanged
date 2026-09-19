@@ -3,7 +3,7 @@ package main
 // The bubbletea model: one frame (see frame.go) holding the context line
 // (which checkout and branch), the filter input, the changed files next to
 // the diff of the one under the cursor, and the help. Modeled on asgitlog and
-// the goto pickers: the input is focused before the program starts and every
+// the asgoto pickers: the input is focused before the program starts and every
 // printable key filters. Enter hands the terminal to the editor and comes
 // back to the list, like the fzf function this replaces.
 
@@ -178,7 +178,7 @@ func newModel(repo repoInfo, ch changes, loadErr, diffMode, hunkBin, query strin
 	return m
 }
 
-// newFilterInput builds the focused filter textinput with the gotochanged
+// newFilterInput builds the focused filter textinput with the asgotochanged
 // prompt. The prompt string already carries its colors, so the prompt style
 // is left empty.
 func newFilterInput() textinput.Model {
@@ -196,9 +196,9 @@ func newFilterInput() textinput.Model {
 // non-release builds.
 func promptText() string {
 	if strings.HasPrefix(version, "v") {
-		return stPrompt.Render("gotochanged ❯ ")
+		return stPrompt.Render("asgotochanged ❯ ")
 	}
-	return stPrompt.Render("gotochanged (") + stDev.Render("dev") + stPrompt.Render(") ❯ ")
+	return stPrompt.Render("asgotochanged (") + stDev.Render("dev") + stPrompt.Render(") ❯ ")
 }
 
 func (m *model) current() *changedFile {
@@ -507,10 +507,10 @@ func (m *model) setFlash(s string) tea.Cmd {
 
 // ---- editing ----
 
-// editorArgv is the editor command. GOTOCHANGED_EDITOR replaces it; the
+// editorArgv is the editor command. ASGOTOCHANGED_EDITOR replaces it; the
 // default is nvim, what the fzf function opened, then $EDITOR, then vi.
 func editorArgv() []string {
-	if f := strings.Fields(os.Getenv("GOTOCHANGED_EDITOR")); len(f) > 0 {
+	if f := strings.Fields(os.Getenv("ASGOTOCHANGED_EDITOR")); len(f) > 0 {
 		return f
 	}
 	if _, err := exec.LookPath("nvim"); err == nil {

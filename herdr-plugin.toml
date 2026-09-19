@@ -1,5 +1,5 @@
-id = "asumaran.gotochanged"
-name = "gotochanged"
+id = "asumaran.asgotochanged"
+name = "asgotochanged"
 version = "0.2.0"
 min_herdr_version = "0.7.5"
 description = "Browse the files the current branch changed against its base, with a delta-rendered diff, and edit them"
@@ -20,4 +20,4 @@ title = "Changes"
 placement = "popup"
 width = "85%"
 height = "90%"
-command = ["./gotochanged"]
+command = ["./asgotochanged"]

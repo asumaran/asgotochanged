@@ -1,4 +1,4 @@
-# gotochanged
+# asgotochanged
 
 A [herdr](https://github.com/asumaran/herdr) plugin popup that lists the files
 your branch changed against its base, shows the diff of the one under the
@@ -7,16 +7,16 @@ what is still pending: committed, staged, unstaged and untracked files. It
 also runs as a plain command in any git checkout.
 
 Sibling of [asgitlog](https://github.com/asumaran/asgitlog) (same frame, same
-[hunk](https://hunk.dev) diffs) and of the goto pickers
-([gotopr](https://github.com/asumaran/gotopr),
-[gotonotes](https://github.com/asumaran/gotonotes),
-[gotosession](https://github.com/asumaran/gotosession)).
+[hunk](https://hunk.dev) diffs) and of the asgoto pickers
+([asgotopr](https://github.com/asumaran/asgotopr),
+[asgotonotes](https://github.com/asumaran/asgotonotes),
+[asgotosession](https://github.com/asumaran/asgotosession)).
 
 ```
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ ~/wt/shop/fix-cart-total  fix/cart-total -> origin/fix/cart-total (ahead 2, behind 0)                │
 ├──────────────────────────────────────────────────────────────────────────────── 4/4 [vs origin/main] ─┤
-│ gotochanged ❯                                                                                        │
+│ asgotochanged ❯                                                                                      │
 ├───────────────────────────┬──────────────────────────────────────────────────────────────────────────┤
 │▌M  src/cart/total.ts      │  src/cart/total.ts                                      +12 -3           │
 │ A  src/cart/tax.ts        │ ▌··· 13 unchanged lines ···                                              │
@@ -37,12 +37,12 @@ Enter opens `nvim`, or `$EDITOR` when there is no nvim.
 ## Install
 
 ```
-herdr plugin install asumaran/gotochanged
+herdr plugin install asumaran/asgotochanged
 ```
 
 The manifest's `[[build]]` runs `scripts/fetch-binary.sh`, which downloads the
 release binary matching the manifest version and falls back to `go build`
-(`GOTOCHANGED_BUILD_FROM_SOURCE=1` skips the download).
+(`ASGOTOCHANGED_BUILD_FROM_SOURCE=1` skips the download).
 
 Bind a key to the `open` action in `~/.config/herdr/config.toml`:
 
@@ -50,8 +50,8 @@ Bind a key to the `open` action in `~/.config/herdr/config.toml`:
 [[keys.command]]
 key = ["prefix+m", "ctrl+alt+m"]
 type = "plugin_action"
-command = "asumaran.gotochanged.open"
-description = "gotochanged (branch changes)"
+command = "asumaran.asgotochanged.open"
+description = "asgotochanged (branch changes)"
 ```
 
 The popup works on the repository of the pane that was focused when it opened.
@@ -85,7 +85,7 @@ branch is compared against.
 | click | select a row |
 | `esc`, `q` with an empty filter | quit |
 
-As a command: `gotochanged [query]`, where `query` is the initial filter.
+As a command: `asgotochanged [query]`, where `query` is the initial filter.
 
 ## Behavior notes
 
@@ -104,31 +104,31 @@ As a command: `gotochanged [query]`, where `query` is the initial filter.
   except for added, deleted and untracked files: one half would be empty.
 - hunk draws a diff first and its syntax highlighting a moment later. To keep
   that repaint off the screen, the files around the cursor are rendered ahead
-  of time and finished renders are kept in `~/.cache/gotochanged` between runs
-  (`GOTOCHANGED_NO_CACHE=1` turns the cache off). You only see the colors come
+  of time and finished renders are kept in `~/.cache/asgotochanged` between runs
+  (`ASGOTOCHANGED_NO_CACHE=1` turns the cache off). You only see the colors come
   in the first time a diff is ever rendered.
-- gotochanged only reads the repository. It never stages, commits or checks
+- asgotochanged only reads the repository. It never stages, commits or checks
   anything out. What it writes is its own: the diff mode, the whitespace setting and
   that cache.
 
 ## Development
 
 ```bash
-go build -o gotochanged .   # local build (plugin runs ./gotochanged from the repo root)
-./gotochanged -dump         # print the changed files of the current checkout (no TTY)
-./gotochanged -dump -query total   # matches with their scores
+go build -o asgotochanged .   # local build (plugin runs ./asgotochanged from the repo root)
+./asgotochanged -dump         # print the changed files of the current checkout (no TTY)
+./asgotochanged -dump -query total   # matches with their scores
 go vet ./... && go test ./...
-scripts/pty-check.py ./gotochanged   # end-to-end TUI check on a pty (python3 + pyte)
-herdr plugin link ~/Developer/gotochanged   # register the working copy (no build step)
+scripts/pty-check.py ./asgotochanged   # end-to-end TUI check on a pty (python3 + pyte)
+herdr plugin link ~/Developer/asgotochanged   # register the working copy (no build step)
 ```
 
-`GOTOCHANGED_EDITOR` replaces the editor command and `GOTOCHANGED_HUNK` the
-hunk binary (`none` turns hunk off). `GOTOCHANGED_POPUP_WIDTH` /
-`GOTOCHANGED_POPUP_HEIGHT` override the popup size from the manifest.
+`ASGOTOCHANGED_EDITOR` replaces the editor command and `ASGOTOCHANGED_HUNK` the
+hunk binary (`none` turns hunk off). `ASGOTOCHANGED_POPUP_WIDTH` /
+`ASGOTOCHANGED_POPUP_HEIGHT` override the popup size from the manifest.
 
 ## Releasing
 
 `scripts/release.sh <X.Y.Z>` gates on a clean tree + green vet/build/test,
 generates the CHANGELOG entry from commit subjects, syncs the manifest
 version, commits, tags and publishes the GitHub release; CI then attaches
-`gotochanged-darwin-arm64`, the asset `fetch-binary.sh` downloads on installs.
+`asgotochanged-darwin-arm64`, the asset `fetch-binary.sh` downloads on installs.

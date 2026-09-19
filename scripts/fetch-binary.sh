@@ -1,5 +1,5 @@
 #!/bin/sh
-# fetch-binary.sh — the plugin's [[build]] command: provision ./gotochanged without
+# fetch-binary.sh — the plugin's [[build]] command: provision ./asgotochanged without
 # requiring a Go toolchain.
 #
 # Downloads the prebuilt binary attached to the GitHub release matching the
@@ -9,9 +9,9 @@
 # fails. Exits non-zero only when neither path works, which aborts the plugin
 # install.
 #
-# Set GOTOCHANGED_BUILD_FROM_SOURCE=1 to skip the download and always compile
+# Set ASGOTOCHANGED_BUILD_FROM_SOURCE=1 to skip the download and always compile
 # locally (for users who prefer not to run prebuilt binaries):
-#   GOTOCHANGED_BUILD_FROM_SOURCE=1 herdr plugin install asumaran/gotochanged
+#   ASGOTOCHANGED_BUILD_FROM_SOURCE=1 herdr plugin install asumaran/asgotochanged
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -33,16 +33,16 @@ case "$(uname -m)" in
   *)               ARCH="" ;;
 esac
 
-URL="https://github.com/asumaran/gotochanged/releases/download/v${VERSION}/gotochanged-${OS}-${ARCH}"
+URL="https://github.com/asumaran/asgotochanged/releases/download/v${VERSION}/asgotochanged-${OS}-${ARCH}"
 
-if [ "${GOTOCHANGED_BUILD_FROM_SOURCE:-0}" = "1" ]; then
-  echo "fetch-binary: GOTOCHANGED_BUILD_FROM_SOURCE=1, skipping release download"
+if [ "${ASGOTOCHANGED_BUILD_FROM_SOURCE:-0}" = "1" ]; then
+  echo "fetch-binary: ASGOTOCHANGED_BUILD_FROM_SOURCE=1, skipping release download"
 elif [ -n "$OS" ] && [ -n "$ARCH" ] && command -v curl >/dev/null 2>&1; then
   tmp="$(mktemp)"
   if curl -fsSL --retry 2 -o "$tmp" "$URL"; then
     chmod +x "$tmp"
-    mv "$tmp" gotochanged
-    echo "fetch-binary: installed gotochanged-${OS}-${ARCH} from release v${VERSION}"
+    mv "$tmp" asgotochanged
+    echo "fetch-binary: installed asgotochanged-${OS}-${ARCH} from release v${VERSION}"
     exit 0
   fi
   rm -f "$tmp"
@@ -50,8 +50,8 @@ elif [ -n "$OS" ] && [ -n "$ARCH" ] && command -v curl >/dev/null 2>&1; then
 fi
 
 if command -v go >/dev/null 2>&1; then
-  go build -ldflags "-X main.version=v${VERSION}-source" -o gotochanged .
-  echo "fetch-binary: built gotochanged from source (v${VERSION}-source)"
+  go build -ldflags "-X main.version=v${VERSION}-source" -o asgotochanged .
+  echo "fetch-binary: built asgotochanged from source (v${VERSION}-source)"
   exit 0
 fi
 

@@ -1,6 +1,6 @@
 # Compiled binary (built locally or in CI; attached to GitHub Releases as an asset).
-/gotochanged
-gotochanged-darwin-*
+/asgotochanged
+asgotochanged-darwin-*
 
 # Release staging
 /dist/
