@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -149,12 +148,6 @@ func TestClickSelectsRow(t *testing.T) {
 		if got := clicked.current().path; got != "src/cart/total.ts" {
 			t.Errorf("click at %v moved the cursor to %s", c, got)
 		}
-	}
-}
-
-func TestPathCellsKeepsTheFileName(t *testing.T) {
-	if got := ansi.Strip(pathCells("src/components/cart/CartTotal.tsx", nil, 16, false)); got != "…t/CartTotal.tsx" {
-		t.Errorf("got %q", got)
 	}
 }
 
@@ -337,25 +330,5 @@ func TestMouseWheelFollowsThePointer(t *testing.T) {
 	wheel(m.listW()+10, tea.MouseWheelDown)
 	if m.cursor != first || m.prevVP.YOffset() == 0 {
 		t.Errorf("wheel over the preview: cursor = %d, preview at %d", m.cursor, m.prevVP.YOffset())
-	}
-}
-
-func TestMatchesStayMarkedOnTheSelectedRow(t *testing.T) {
-	match := func(base lipgloss.Style) lipgloss.Style {
-		return base.Foreground(stMatch.GetForeground()).Underline(true)
-	}
-	if !stMatch.GetUnderline() {
-		t.Errorf("a match is underlined")
-	}
-	path := "src/cart/total.ts" // byte 9 is the t of total
-	sel, plain := pathCells(path, []int{9}, 30, true), pathCells(path, []int{9}, 30, false)
-	if !strings.Contains(sel, match(stSel).Render("t")) || !strings.Contains(sel, stSel.Render("src/cart/")) {
-		t.Errorf("selected = %q", sel)
-	}
-	if !strings.Contains(plain, match(lipgloss.NewStyle()).Render("t")) || !strings.Contains(plain, stDim.Render("src/cart/")) {
-		t.Errorf("plain = %q", plain)
-	}
-	if ansi.Strip(sel) != path || ansi.Strip(plain) != path {
-		t.Errorf("highlighting must not change the text: %q / %q", ansi.Strip(sel), ansi.Strip(plain))
 	}
 }

@@ -34,16 +34,13 @@ func truncate(s string, width int) string {
 var (
 	stPrompt = lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true)
 	stDev    = lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Bold(true)
-	stSel    = lipgloss.NewStyle().Background(lipgloss.Color("8")).Bold(true)
-	// a filter match: asgitlog's look, also over the selected row's background
-	stMatch = lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Underline(true)
-	stDim   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	stTitle = lipgloss.NewStyle().Bold(true)
-	stError = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
-	stInfo  = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-	stScope = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	stCount = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	stFlash = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	stDim    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	stTitle  = lipgloss.NewStyle().Bold(true)
+	stError  = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+	stInfo   = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	stScope  = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	stCount  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	stFlash  = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
 	// statuses, after git's own palette
 	stAdded     = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
@@ -300,75 +297,12 @@ func (m *model) renderList() {
 // whole column.
 func (m *model) fileLine(r fileRow, selected bool, width int) string {
 	pathW := max(8, width-4)
+	dirEnd := strings.LastIndexByte(r.f.path, '/') + 1 // the directory is dimmed
 	if selected {
-		line := ansi.Truncate(stSel.Render("▌"+r.f.status+"  ")+pathCells(r.f.path, r.idx, pathW, true), width, "")
-		if n := width - ansi.StringWidth(line); n > 0 {
-			line += stSel.Render(strings.Repeat(" ", n))
-		}
-		return line
+		line := stSel.Render("▌"+r.f.status+"  ") + pathCells(r.f.path, dirEnd, r.idx, pathW, true)
+		return selPad(ansi.Truncate(line, width, ""), width)
 	}
-	return " " + statusStyle(r.f.status).Render(r.f.status) + "  " + pathCells(r.f.path, r.idx, pathW, false)
-}
-
-// pathCells fits a path into width. A path that does not fit loses its head,
-// not its tail, so the file name is always visible. The directory part is
-// dimmed, unless the row is selected and everything takes its background; the
-// matched bytes are highlighted over either, as asgitlog does.
-func pathCells(path string, idx []int, width int, selected bool) string {
-	type cell struct {
-		r   rune
-		off int
-	}
-	cells := make([]cell, 0, len(path))
-	for off, r := range path {
-		cells = append(cells, cell{r, off})
-	}
-	cut := false
-	if len(cells) > width && width > 1 {
-		cells = cells[len(cells)-(width-1):]
-		cut = true
-	}
-	dirEnd := strings.LastIndexByte(path, '/') + 1 // bytes before it are the directory
-	style := func(dimmed bool) lipgloss.Style {
-		switch {
-		case selected:
-			return stSel
-		case dimmed:
-			return stDim
-		}
-		return lipgloss.NewStyle()
-	}
-	matched := make(map[int]bool, len(idx))
-	for _, i := range idx {
-		matched[i] = true
-	}
-	var b, run strings.Builder
-	runDim := false
-	flush := func() {
-		if run.Len() > 0 {
-			b.WriteString(style(runDim).Render(run.String()))
-			run.Reset()
-		}
-	}
-	if cut {
-		runDim = true
-		run.WriteString("…")
-	}
-	for _, c := range cells {
-		d := c.off < dirEnd
-		if matched[c.off] {
-			flush()
-			b.WriteString(style(d).Foreground(stMatch.GetForeground()).Underline(true).Render(string(c.r)))
-			continue
-		}
-		if d != runDim {
-			flush()
-			runDim = d
-		}
-		run.WriteRune(c.r)
-	}
-	flush()
-	return b.String()
+	return " " + statusStyle(r.f.status).Render(r.f.status) + "  " + pathCells(r.f.path, dirEnd, r.idx, pathW, false)
 }
 
 func (m *model) setCursor(i int) {
