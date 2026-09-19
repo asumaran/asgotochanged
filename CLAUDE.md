@@ -34,7 +34,7 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
   diff-mode preference, `tea.NewProgram`, `runDump`.
 - `git.go` — `loadRepoInfo` / `repoInfo.line`, `resolveBase`, `loadChanges`
   (name-status + untracked + numstat, all NUL-separated), `diffArgs`.
-- `filter.go` — fuzzy rows over the paths, `bestIndex`.
+- `filter.go` — fuzzy rows over the paths.
 - `match.go` — `findTight`, the fuzzy matcher with one correction: it is
   greedy (first candidate for each rune, left to right), so a query that
   occurs in one piece could still match scattered letters before it. When the
@@ -174,8 +174,12 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   (`reloadCmd`): the edit can change a diff, add or remove rows. The cursor
   stays on the same path (`refilter(true)`). A file that does not exist in the
   work tree (deleted) is never handed over: notice on the help line.
-- **Filtering keeps the path order**; the fuzzy score only decides where the
-  cursor lands (`bestIndex`). Only paths are matched. Matched indexes from
+- **A query makes the list a search result**: rows are ranked, best match
+  first, and the cursor sits on the first one (`rank` in `rank.go`, the same
+  file in every picker of the family). Equal scores keep the list's own
+  order, the order of the diff, which is also the order without a query. A score says how
+  good the match is and nothing about the length of the text (`match.go`).
+  Only paths are matched. Matched indexes from
   `sahilm/fuzzy` are BYTE offsets. With an empty query the cursor stays on the
   row it was on.
 - **Keys vs. filter**: every printable key filters, so `q` quits only while

@@ -247,9 +247,6 @@ func (m *model) applyFilter() {
 	q := m.ti.Value()
 	m.rows = filterFiles(m.ch.files, q)
 	m.cursor = 0
-	if q != "" {
-		m.cursor = bestIndex(len(m.rows), func(i int) int { return m.rows[i].score })
-	}
 	if len(m.rows) == 0 {
 		m.cursor = -1
 	}
