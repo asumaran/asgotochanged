@@ -5,9 +5,7 @@ package main
 // lands. Matched positions are byte offsets into the path, as sahilm/fuzzy
 // reports them.
 
-import (
-	"github.com/sahilm/fuzzy"
-)
+import ()
 
 // fileRow is one changed file in the list.
 type fileRow struct {
@@ -31,7 +29,7 @@ func filterFiles(files []changedFile, q string) []fileRow {
 		paths[i] = f.path
 	}
 	hits := map[int]fileRow{}
-	for _, mt := range fuzzy.Find(q, paths) {
+	for _, mt := range findTight(q, paths) {
 		hits[mt.Index] = fileRow{f: files[mt.Index], score: mt.Score, idx: append([]int(nil), mt.MatchedIndexes...)}
 	}
 	for i := range files {

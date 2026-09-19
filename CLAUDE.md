@@ -35,6 +35,11 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
 - `git.go` — `loadRepoInfo` / `repoInfo.line`, `resolveBase`, `loadChanges`
   (name-status + untracked + numstat, all NUL-separated), `diffArgs`.
 - `filter.go` — fuzzy rows over the paths, `bestIndex`.
+- `match.go` — `findTight`, the fuzzy matcher with one correction: it is
+  greedy (first candidate for each rune, left to right), so a query that
+  occurs in one piece could still match scattered letters before it. When the
+  query occurs whole, that occurrence is the match, for the highlight and for
+  the score. The same file in every tool of the family.
 - `frame.go` — the single-frame layout shared by the family: `hline`, `fit`,
   `framed`, `frameHead`, `splitMain`, `scrollPos` and the section rows
   (`mainY`, `listY`, `frameRows`, each with or without the optional context
