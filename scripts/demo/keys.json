@@ -1,0 +1,19 @@
+[
+  ["wait", 3.0],
+  ["prefix", "m"],
+  ["wait", 3.4],
+  ["key", "down"],
+  ["wait", 1.6],
+  ["key", "down"],
+  ["wait", 1.6],
+  ["type", "tax"],
+  ["wait", 2.2],
+  ["key", "enter"],
+  ["wait", 2.8],
+  ["type", ":q", 0.25],
+  ["key", "enter"],
+  ["wait", 2.0],
+  ["key", "ctrl+t"],
+  ["wait", 2.4],
+  ["key", "esc"]
+]
