@@ -98,8 +98,13 @@ As a command: `gotochanged [query]`, where `query` is the initial filter.
   add a file or make one disappear. The cursor stays on the file it was on.
 - A deleted file has nothing to open; the popup says so and stays up.
 - Auto goes side by side when the diff area is at least 120 columns wide.
+- hunk draws a diff first and its syntax highlighting a moment later. To keep
+  that repaint off the screen, the files around the cursor are rendered ahead
+  of time and finished renders are kept in `~/.cache/gotochanged` between runs
+  (`GOTOCHANGED_NO_CACHE=1` turns the cache off). You only see the colors come
+  in the first time a diff is ever rendered.
 - gotochanged only reads the repository. It never stages, commits or checks
-  anything out.
+  anything out. What it writes is its own: the diff mode and that cache.
 
 ## Development
 

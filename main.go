@@ -5,7 +5,7 @@
 // checkout. It replaces fm, a zsh + fzf function.
 //
 // It only reads the repository: it never stages, commits or checks anything
-// out. The one thing it writes is the chosen diff mode.
+// out. What it writes is its own: the chosen diff mode and a cache of renders.
 package main
 
 import (
@@ -65,6 +65,9 @@ func main() {
 	if err != nil {
 		loadErr = err.Error()
 	}
+	renderCache = openDiskCache()
+	go renderCache.prune(cacheMaxBytes)
+
 	// Alt screen and mouse mode are declared per frame by View().
 	m := newModel(repo, ch, loadErr, loadDiffMode(), hunkPath(), *query)
 	if _, err := tea.NewProgram(m).Run(); err != nil {

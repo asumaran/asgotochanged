@@ -6,8 +6,10 @@ package main
 // Rendering runs as a tea.Cmd under a context the model cancels when the
 // selection moves on: a hunk render takes a few hundred milliseconds and
 // walking the list would pile them up. hunk paints first and highlights
-// later, so a render reports a partial frame and then the final one. Results
-// are cached per (path, width, mode, mtime) for the popup's lifetime, so an
+// later, so a render reports a partial frame and then the final one; to keep
+// that repaint off the screen the model renders the rows around the cursor
+// ahead of time, and the finished renders are kept on disk between runs (see
+// cache.go). In memory they are cached per (path, width, mode, mtime), so an
 // edited file re-renders on its own.
 
 import (
@@ -150,7 +152,20 @@ func renderDiff(ctx context.Context, top, mergeBase string, f changedFile, width
 	if hunkBin == "" {
 		return strings.ReplaceAll(out, "\t", "    "), nil
 	}
-	return renderHunk(ctx, hunkBin, []byte(out+"\n"), width, sbs, early)
+	// The render is addressed by the patch itself (see cache.go): a hit is the
+	// finished, highlighted frame at once, with no partial frame before it.
+	patch, mode := []byte(out+"\n"), diffSingle
+	if sbs {
+		mode = diffSBS
+	}
+	if diff, ok := renderCache.get(hunkBin, top, patch, width, mode); ok {
+		return diff, nil
+	}
+	diff, err := renderHunk(ctx, hunkBin, patch, width, sbs, early)
+	if err == nil && ctx.Err() == nil {
+		renderCache.put(hunkBin, top, patch, width, mode, diff)
+	}
+	return diff, err
 }
 
 // limitedOutput runs cmd and returns at most maxDiffBytes of its stdout, cut

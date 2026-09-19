@@ -136,7 +136,8 @@ editor = write(os.path.join(SANDBOX, "editor"),
 
 def session(args=()):
     env = dict(git_env, TERM="xterm-256color", COLORTERM="truecolor", GOTOCHANGED_HUNK="none",
-               GOTOCHANGED_EDITOR=editor, XDG_CONFIG_HOME=os.path.join(home, ".config"))
+               GOTOCHANGED_EDITOR=editor, XDG_CONFIG_HOME=os.path.join(home, ".config"),
+               XDG_CACHE_HOME=os.path.join(home, ".cache"))
     for k in ("HERDR_PLUGIN_STATE_DIR", "HERDR_PLUGIN_ENTRYPOINT_ID", "HERDR_PLUGIN_CONTEXT_JSON"):
         env.pop(k, None)
     if os.path.exists(edit_log): os.remove(edit_log)

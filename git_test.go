@@ -144,3 +144,29 @@ func TestRepoInfo(t *testing.T) {
 		t.Errorf("String() = %q", s)
 	}
 }
+
+func TestDiskCacheIsAddressedByThePatch(t *testing.T) {
+	c := &diskCache{dir: t.TempDir()}
+	patch := []byte("diff --git a/x b/x\n+one\n")
+	if _, ok := c.get("/bin/hunk", "/repo", patch, 80, diffSingle); ok {
+		t.Fatal("empty cache hit")
+	}
+	c.put("/bin/hunk", "/repo", patch, 80, diffSingle, "rendered")
+	if got, ok := c.get("/bin/hunk", "/repo", patch, 80, diffSingle); !ok || got != "rendered" {
+		t.Errorf("get = %q, %v", got, ok)
+	}
+	for name, miss := range map[string]func() (string, bool){
+		"edited patch": func() (string, bool) { return c.get("/bin/hunk", "/repo", append(patch, "+two\n"...), 80, diffSingle) },
+		"other width":  func() (string, bool) { return c.get("/bin/hunk", "/repo", patch, 100, diffSingle) },
+		"other mode":   func() (string, bool) { return c.get("/bin/hunk", "/repo", patch, 80, diffSBS) },
+	} {
+		if _, ok := miss(); ok {
+			t.Errorf("%s: want a miss", name)
+		}
+	}
+	var none *diskCache
+	none.put("/bin/hunk", "/repo", patch, 80, diffSingle, "x") // a nil cache stores nothing and never panics
+	if _, ok := none.get("/bin/hunk", "/repo", patch, 80, diffSingle); ok {
+		t.Error("nil cache hit")
+	}
+}

@@ -160,3 +160,81 @@ func TestNothingChanged(t *testing.T) {
 		t.Errorf("render:\n%s", out)
 	}
 }
+
+// hunkFixture is the fixture with a hunk binary set, so renders are planned
+// ahead. No command is ever run: a tea.Cmd only runs when the program runs it.
+func hunkFixture(t *testing.T) model {
+	t.Helper()
+	m := fixture(t)
+	m.hunkBin = "/nonexistent/hunk"
+	for i := 0; i < 12; i++ {
+		m.ch.files = append(m.ch.files, changedFile{status: "M", path: "z/file" + string(rune('a'+i)) + ".go"})
+	}
+	m.applyFilter()
+	return m
+}
+
+func TestPrefetchIsBounded(t *testing.T) {
+	m := hunkFixture(t)
+	if cmd := m.updatePreview(); cmd == nil {
+		t.Fatal("the selected file must start rendering")
+	}
+	if len(m.inflight) != 1 {
+		t.Fatalf("inflight = %d, want the selection only until it reports", len(m.inflight))
+	}
+	mode := effectiveDiff(m.diffMode, m.prevW())
+	m.prefetch(mode)
+	if len(m.inflight) != maxPipelines {
+		t.Errorf("inflight = %d, want %d", len(m.inflight), maxPipelines)
+	}
+	// The nearest rows go first: the one below, then (none above row 0) the next.
+	for _, i := range []int{1, 2} {
+		if _, ok := m.inflight[previewKey(m.repo.Top, m.rows[i].f, m.prevW(), mode)]; !ok {
+			t.Errorf("row %d is not being rendered ahead", i)
+		}
+	}
+}
+
+func TestSelectionNeverWaitsForASlot(t *testing.T) {
+	m := hunkFixture(t)
+	m.updatePreview()
+	mode := effectiveDiff(m.diffMode, m.prevW())
+	m.prefetch(mode)
+	m.cursor = 12 // far away from everything in flight
+	if cmd := m.updatePreview(); cmd == nil {
+		t.Fatal("the new selection must start rendering at once")
+	}
+	if _, ok := m.inflight[m.prevKey]; !ok || len(m.inflight) != maxPipelines {
+		t.Errorf("inflight = %d, selected running = %v: want one render given up for the selection", len(m.inflight), ok)
+	}
+}
+
+func TestFinishedRenderFreesItsSlotAndIsKept(t *testing.T) {
+	m := hunkFixture(t)
+	m.updatePreview()
+	key := m.prevKey
+	next, _ := m.Update(previewMsg{key: key, content: "partial", partial: true, next: func() tea.Msg { return nil }})
+	m = next.(model)
+	if _, cached := m.renders[key]; cached || len(m.inflight) == 0 {
+		t.Errorf("a partial frame must be shown, not kept, and its pipeline is still running")
+	}
+	next, _ = m.Update(previewMsg{key: key, content: "final"})
+	m = next.(model)
+	if m.renders[key] != "final" {
+		t.Errorf("renders[key] = %q", m.renders[key])
+	}
+	if _, running := m.inflight[key]; running {
+		t.Error("the finished render still holds its slot")
+	}
+	if len(m.inflight) == 0 {
+		t.Error("finishing a render should start the ones around the cursor")
+	}
+}
+
+func TestNoPrefetchWithoutHunk(t *testing.T) {
+	m := fixture(t)
+	m.updatePreview()
+	if m.prefetch(diffSingle) != nil || len(m.inflight) != 1 {
+		t.Errorf("plain git renders are instant: nothing to render ahead (inflight = %d)", len(m.inflight))
+	}
+}

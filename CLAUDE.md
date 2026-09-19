@@ -14,7 +14,8 @@ Same frame and diff renderer as `asgitlog`, same filtering and lifecycle as the
 goto pickers.
 
 It only reads the repository. It never stages, commits, stashes or checks
-anything out; the one thing it writes is the chosen diff mode.
+anything out; what it writes is its own: the chosen diff mode and a cache of
+rendered diffs.
 
 Distributed as a herdr plugin (`herdr plugin install asumaran/gotochanged`;
 the manifest's `[[build]]` runs `scripts/fetch-binary.sh`). Each GitHub Release
@@ -43,7 +44,9 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
   full-screen TUI with no static output, so it runs on a tall pty behind a
   terminal emulator and the emulated screen is read back as ANSI lines.
 - `preview.go` — the diff as a `tea.Cmd`: cancellable, a partial frame then
-  the final one, render cache, diff modes.
+  the final one, diff modes.
+- `cache.go` — the finished renders on disk between runs, addressed by the
+  patch they were made from (scheme copied from asgitlog).
 - `ui.go` — the bubbletea model/Update/View, editing through
   `tea.ExecProcess`, mouse, styles, `pathCells`.
 - `scripts/pty-check.py` — end-to-end TUI driver (see Testing).
@@ -95,14 +98,25 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   Without hunk (`GOTOCHANGED_HUNK=none`, or not installed) the same diff with
   `--color=always`. delta is deliberately not used: the family renders diffs
   with hunk.
-- **Renders are cancellable and two-stage**: a hunk render takes a few hundred
-  milliseconds, so `updatePreview` cancels the one in flight when the
-  selection moves on (`m.cancel`), and a cancelled render reports
-  `cancelled` and is dropped. hunk paints first and highlights later: the
-  render reports a `partial` frame (shown, never cached) and then the final
-  one through `previewMsg.next`. The final frame replaces the partial one
-  keeping the scroll offset. Cache key: status, path, width, effective mode,
-  file mtime.
+- **Renders are two-stage, and that repaint is kept off the screen**: hunk
+  paints the diff first and the syntax highlighting a few hundred
+  milliseconds later, so a render reports a `partial` frame (shown, never
+  cached) and then the final one through `previewMsg.next`; the final frame
+  replaces the partial one keeping the scroll offset. Seeing the colors change
+  under the cursor is the thing to avoid, and two mechanisms (both asgitlog's)
+  do it. **Rendering ahead**: `prefetch` renders the `prefetchAround` rows on
+  each side of the cursor, nearest first, at most `maxPipelines` (3) at once
+  (`m.inflight`, key → cancel); it runs again every time a render reports
+  back, so the window fills a few at a time and moving through the list shows
+  finished diffs. The selection never waits for a slot: `cancelFarthest` gives
+  up a render ahead for it. **Disk cache** (`cache.go`,
+  `~/.cache/gotochanged/renders`, `GOTOCHANGED_NO_CACHE` turns it off): a
+  finished render is stored gzipped under the sha256 of hunk's fingerprint
+  (binary + config files), width, mode and THE PATCH ITSELF, so an edited file
+  simply misses and nothing can go stale; a hit returns the highlighted frame
+  at once with no partial before it. Only the first ever render of a patch
+  shows the repaint. In memory the key is status, path, width, effective mode
+  and file mtime. Plain git renders are instant: no prefetch, no disk cache.
 - **Diff mode**: auto / side by side / single column on `ctrl+t`, saved in the
   plugin state dir (`HERDR_PLUGIN_STATE_DIR`, standalone
   `~/.config/herdr/gotochanged-tui`). Auto goes side by side from 120 columns

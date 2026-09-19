@@ -138,8 +138,9 @@ type model struct {
 	// preview render cache
 	renders map[string]string
 	prevKey string
-	// cancel stops the render in flight when the selection moves on.
-	cancel context.CancelFunc
+	// inflight is the renders running, by key: the selected file's and the
+	// ones rendered ahead. Each carries the cancel of its context.
+	inflight map[string]context.CancelFunc
 }
 
 func newModel(repo repoInfo, ch changes, loadErr, diffMode, hunkBin, query string) model {
@@ -155,6 +156,7 @@ func newModel(repo repoInfo, ch changes, loadErr, diffMode, hunkBin, query strin
 		help:     help.New(),
 		keys:     defaultKeys(),
 		renders:  map[string]string{},
+		inflight: map[string]context.CancelFunc{},
 		width:    94,
 		height:   24,
 	}
@@ -361,8 +363,20 @@ func (m *model) ensureVisible() {
 
 // ---- preview ----
 
+const (
+	// maxPipelines bounds the renders running at once, so holding an arrow
+	// key never piles up hunk processes.
+	maxPipelines = 3
+	// prefetchAround is how many rows on each side of the cursor are rendered
+	// ahead, nearest first. hunk paints a diff and highlights it a moment
+	// later; rendering ahead keeps that repaint off the screen, so moving
+	// through the list shows finished diffs, as asgitlog does.
+	prefetchAround = 6
+)
+
 // updatePreview refreshes the right column with the diff of the file under
-// the cursor, rendered off the update loop and cached.
+// the cursor, from the render cache when it is there, and renders the rows
+// around it ahead of time.
 func (m *model) updatePreview() tea.Cmd {
 	f := m.current()
 	if f == nil {
@@ -373,22 +387,91 @@ func (m *model) updatePreview() tea.Cmd {
 	mode := effectiveDiff(m.diffMode, m.prevW())
 	key := previewKey(m.repo.Top, *f, m.prevW(), mode)
 	if key == m.prevKey {
-		return nil
-	}
-	if m.cancel != nil {
-		m.cancel() // the render of the file the cursor just left
-		m.cancel = nil
+		return m.prefetch(mode)
 	}
 	m.prevKey = key
 	m.prevVP.GotoTop()
 	if c, ok := m.renders[key]; ok {
 		m.prevVP.SetContent(c)
-		return nil
+		return m.prefetch(mode)
 	}
 	m.prevVP.SetContent(stDim.Render("rendering…"))
+	if _, running := m.inflight[key]; running {
+		return nil // rendered ahead and about to report
+	}
+	if len(m.inflight) >= maxPipelines {
+		m.cancelFarthest(mode) // the selection never waits for a slot
+	}
+	return m.startRender(*f, key, mode)
+}
+
+func (m *model) startRender(f changedFile, key, mode string) tea.Cmd {
 	ctx, cancel := context.WithCancel(context.Background())
-	m.cancel = cancel
-	return renderPreviewCmd(ctx, m.repo.Top, m.ch.mergeBase, *f, key, m.prevW(), mode, m.hunkBin)
+	m.inflight[key] = cancel
+	return renderPreviewCmd(ctx, m.repo.Top, m.ch.mergeBase, f, key, m.prevW(), mode, m.hunkBin)
+}
+
+// around is the rows worth having rendered besides the selected one, nearest
+// first, the row below before the row above.
+func (m *model) around() []int {
+	var rows []int
+	for d := 1; d <= prefetchAround; d++ {
+		for _, i := range []int{m.cursor + d, m.cursor - d} {
+			if i >= 0 && i < len(m.rows) {
+				rows = append(rows, i)
+			}
+		}
+	}
+	return rows
+}
+
+// prefetch starts the renders of the rows around the cursor while there are
+// free pipelines. It runs again whenever a render reports back, so the window
+// fills up a few at a time.
+func (m *model) prefetch(mode string) tea.Cmd {
+	if m.hunkBin == "" {
+		return nil // plain git is instant: nothing to hide
+	}
+	var cmds []tea.Cmd
+	for _, i := range m.around() {
+		if len(m.inflight) >= maxPipelines {
+			break
+		}
+		f := m.rows[i].f
+		key := previewKey(m.repo.Top, f, m.prevW(), mode)
+		if _, ok := m.renders[key]; ok {
+			continue
+		}
+		if _, ok := m.inflight[key]; ok {
+			continue
+		}
+		cmds = append(cmds, m.startRender(f, key, mode))
+	}
+	return tea.Batch(cmds...)
+}
+
+// cancelFarthest gives up the render ahead that is least likely to be wanted:
+// one that is no longer around the cursor, else the farthest one.
+func (m *model) cancelFarthest(mode string) {
+	keep := map[string]int{}
+	for rank, i := range m.around() {
+		keep[previewKey(m.repo.Top, m.rows[i].f, m.prevW(), mode)] = rank
+	}
+	victim, worst := "", -1
+	for key := range m.inflight {
+		rank, ok := keep[key]
+		if !ok {
+			victim = key
+			break
+		}
+		if rank > worst {
+			victim, worst = key, rank
+		}
+	}
+	if cancel := m.inflight[victim]; cancel != nil {
+		cancel()
+		delete(m.inflight, victim)
+	}
 }
 
 // flashFor is how long a confirmation stays on the help line.
@@ -458,8 +541,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.updatePreview()
 
 	case previewMsg:
+		if msg.next == nil { // final, failed or cancelled: the pipeline is over
+			if cancel := m.inflight[msg.key]; cancel != nil {
+				cancel()
+				delete(m.inflight, msg.key)
+			}
+		}
 		if msg.cancelled {
-			return m, nil
+			return m, m.updatePreview()
 		}
 		if !msg.partial {
 			m.renders[msg.key] = msg.content
@@ -471,7 +560,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.prevVP.SetContent(msg.content)
 			m.prevVP.SetYOffset(y)
 		}
-		return m, msg.next
+		return m, tea.Batch(msg.next, m.updatePreview())
 
 	case editedMsg:
 		if msg.err != nil {
