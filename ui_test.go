@@ -58,8 +58,8 @@ func TestFilterKeepsOrderAndMovesCursor(t *testing.T) {
 	if len(m.rows) != 1 || m.current().path != "src/cart/tax.ts" {
 		t.Fatalf("filtered rows = %d, current = %+v", len(m.rows), m.current())
 	}
-	if c := ansi.Strip(m.counter()); c != "1/4 [vs origin/main]" {
-		t.Errorf("counter = %q", c)
+	if c, s := ansi.Strip(m.counter()), ansi.Strip(m.status()); c != "1/4" || s != "[vs origin/main]" {
+		t.Errorf("counter = %q, status = %q", c, s)
 	}
 }
 
@@ -127,7 +127,8 @@ func TestFrameGeometry(t *testing.T) {
 		}
 		plain := strings.Split(ansi.Strip(m.render()), "\n")
 		if !strings.HasPrefix(plain[0], "╭") || !strings.HasPrefix(plain[len(plain)-1], "╰") ||
-			!strings.Contains(plain[1], "fix/x -> origin/fix/x") || !strings.Contains(plain[2], "4/4") ||
+			!strings.Contains(plain[1], "fix/x -> origin/fix/x") || !strings.Contains(plain[2], "[vs origin/main]") ||
+			!strings.Contains(plain[len(plain)-3], "─ 4/4 ─┴") ||
 			!strings.Contains(plain[mainY(true)], "┬") || !strings.HasPrefix(plain[listY(true)], "│▌M  ") {
 			t.Errorf("%v: frame sections misplaced:\n%s", size, strings.Join(plain, "\n"))
 		}

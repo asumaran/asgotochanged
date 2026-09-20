@@ -13,7 +13,7 @@ never touches a real repository and never opens an editor.
 Usage: scripts/pty-check.py ./asgotochanged   (needs python3 + pyte)
 """
 NAME, ROWS, COLS = "asgotochanged", 18, 150
-import atexit, fcntl, json, os, pty, select, shutil, signal, struct, subprocess, sys, tempfile, termios, time
+import atexit, fcntl, json, os, pty, select, shutil, signal, struct, subprocess, sys, tempfile, termios, time, re
 import pyte
 
 BIN = os.path.abspath(sys.argv[1])
@@ -153,11 +153,16 @@ def divider(f): return f[5].index("│", 1)
 def left(f):  return [l[1:1 + listw()].rstrip() for l in f[5:-3] if l[1:1 + listw()].strip()]
 def right(f): return "\n".join(l[listw() + 3:-1].rstrip() for l in f[5:-3])
 # The input line: the prompt and what is typed (or the placeholder). A build
-# that is not a release says "(dev)" after the counter, on the edge over the
+# that is not a release says "(dev)" at the end of the edge over the
 # input; devmark() says so.
 def prompt(f): return f[3].strip("│ ").rstrip().removesuffix("(dev)").rstrip()
 def devmark(f): return any(l.rstrip("╮┤─ ").endswith("(dev)") for l in f[:4])
-def counter(f): return f[2].strip("├┤─ ").removesuffix("(dev)").rstrip()
+def counter(f):
+    for l in f:
+        m = re.match(r"├─+ (\d+/\d+) ─[┴┤]", l)
+        if m: return m.group(1)
+    return ""
+def status(f): return f[2].strip("├┤─ ").removesuffix("(dev)").rstrip()
 
 print("== asgotochanged pty driver (%dx%d) ==" % (COLS, ROWS))
 
@@ -165,10 +170,10 @@ print("== asgotochanged pty driver (%dx%d) ==" % (COLS, ROWS))
 s = session()
 f = s.start("asgotochanged ❯"); dump("open", f)
 check(prompt(f) == "asgotochanged ❯ Search by path…", "prompt line is clean: %r" % f[3])
-check(devmark(f), "a dev build says so after the counter, on the edge over the input")
+check(devmark(f), "a dev build says so on the edge over the input")
 check(b"\x1b[?1049h" in s.raw, "program entered the alt screen")
 check("~/wt/shop/fix-cart-total  fix/cart-total" in f[1], "the context line names the checkout and the branch: %r" % f[1])
-check(counter(f) == "4/4 [vs main]", "counter and base on the edge: %r" % counter(f))
+check(counter(f) == "4/4" and status(f) == "[vs main]", "counter under the list %r, base on the edge over the input %r" % (counter(f), status(f)))
 rows = left(f)
 check(rows == ["▌?  notes/PLAN.md", " D  src/old.ts", " A  src/tax.ts", " M  src/total.ts"], "changed files by path, with their status: %r" % rows)
 check("+# plan" in right(f), "an untracked file is diffed against nothing")
@@ -221,7 +226,7 @@ os.write(s.master, ESC); s.pump(0.4); s.finish()
 git("stash", "-q", "-u"); git("checkout", "-q", "main")
 s = session()
 f = s.start("asgotochanged ❯"); dump("on the base", f)
-check(counter(f) == "0/0 [vs main]" and "No changes vs main" in "\n".join(f), "the base branch has nothing to list")
+check(counter(f) == "0/0" and status(f) == "[vs main]" and "No changes vs main" in "\n".join(f), "the base branch has nothing to list")
 os.write(s.master, ESC); s.pump(0.4); s.finish()
 
 done()

@@ -15,7 +15,7 @@ Sibling of [asgitlog](https://github.com/asumaran/asgitlog) (same frame, same
 ```
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ ~/wt/shop/fix-cart-total  fix/cart-total -> origin/fix/cart-total (ahead 2, behind 0)                │
-├──────────────────────────────────────────────────────────────────────────────── 4/4 [vs origin/main] ─┤
+├─────────────────────────────────────────────────────────────────────────────────── [vs origin/main] ─┤
 │ ❯ Search by path…                                                                                    │
 ├───────────────────────────┬──────────────────────────────────────────────────────────────────────────┤
 │▌M  src/cart/total.ts      │  src/cart/total.ts                                      +12 -3           │
@@ -23,7 +23,7 @@ Sibling of [asgitlog](https://github.com/asumaran/asgitlog) (same frame, same
 │ D  src/cart/old.ts        │ ▌14 14    const subtotal = items.reduce(sum, 0)                          │
 │ ?  notes/PLAN.md          │ ▌15    -  return subtotal                                                │
 │                           │ ▌   15 +  return subtotal + tax(subtotal)                                │
-├───────────────────────────┴─────────────────────────────────────────────────────────────────── 5/64 ─┤
+├───────────────────── 4/4 ─┴─────────────────────────────────────────────────────────────────── 5/64 ─┤
 │ type filter • enter edit • ^t diff mode • ^s whitespace • ⇧↓ scroll diff • ⇧←/⇧→ resize • esc/q quit │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```

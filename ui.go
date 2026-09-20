@@ -659,9 +659,9 @@ func (m model) View() tea.View {
 // the one thing the rest of the screen cannot say: which checkout and branch.
 func (m model) render() string {
 	w := m.width
-	out := frameHead(w, stInfo.Render(m.repo.line(max(0, w-4))), withDevMark(m.counter()), m.ti.View())
+	out := frameHead(w, stInfo.Render(m.repo.line(max(0, w-4))), withDevMark(m.status()), m.ti.View())
 	out = append(out, splitMain(m.listLines(), strings.Split(m.prevVP.View(), "\n"),
-		m.listW(), m.detailsW(), listPos(&m.listVP, nil), diffEdge(m.ignoreWS, scrollPos(&m.prevVP)))...)
+		m.listW(), m.detailsW(), m.counter(), diffEdge(m.ignoreWS, scrollPos(&m.prevVP)))...)
 	for _, l := range m.footLines() {
 		out = append(out, framed(w, l))
 	}
@@ -669,14 +669,18 @@ func (m model) render() string {
 	return strings.Join(out, "\n")
 }
 
-// counter is the matches/total count, followed by what the branch is compared
-// against (the scope, as in asgitlog).
+// counter is the matches/total count, for the edge under the list.
 func (m model) counter() string {
-	s := stCount.Render(strconv.Itoa(len(m.rows)) + "/" + strconv.Itoa(len(m.ch.files)))
-	if m.ch.base != "" {
-		s += " " + stScope.Render("[vs "+truncate(m.ch.base, max(10, m.width/3))+"]")
+	return stCount.Render(strconv.Itoa(len(m.rows)) + "/" + strconv.Itoa(len(m.ch.files)))
+}
+
+// status is what the branch is compared against (the scope, as in asgitlog),
+// for the edge over the input.
+func (m model) status() string {
+	if m.ch.base == "" {
+		return ""
 	}
-	return s
+	return stScope.Render("[vs " + truncate(m.ch.base, max(10, m.width/3)) + "]")
 }
 
 // listLines is the list as exactly bodyH lines of listW cells.

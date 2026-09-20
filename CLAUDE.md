@@ -49,7 +49,8 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
   The wheel goes through the same code as the arrows; a click moves the
   cursor and never opens anything. The same file in every tool of the family.
 - `prompt.go` — the filter input: its prompt (with the tool's name only outside
-  herdr's popup), the placeholder, the `(dev)` mark after the counter. The same
+  herdr's popup), the placeholder, the `(dev)` mark on the edge over the
+  input. The same
   file in every tool of the family.
 - `helpfoot.go` — the help at the foot: the key that expands it, its height
   and its lines cut to the width. The same file in every tool of the family.
@@ -108,11 +109,10 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   context line on top is only for what the rest of the screen cannot say; here
   it is justified, as in asgitlog: which checkout and branch the list is
   about. A checkout path that does not fit loses its head so the branch keeps
-  its place (`repoInfo.line`). The edge under it carries the matches/total
-  counter and, in brackets, the base (`[vs origin/main]`, asgitlog's scope).
-  The main section is list and diff split by a divider; its bottom edge
-  carries the list's position on the left and the diff's scroll position on
-  the right, each only while its side overflows. Errors and confirmations take
+  its place (`repoInfo.line`). The edge under it carries, in brackets, the base
+  (`[vs origin/main]`, asgitlog's scope). The main section is list and diff
+  split by a divider; its bottom edge carries the matches/total counter under
+  the list and, while the diff overflows, its scroll position on the right. Errors and confirmations take
   the help line. The list starts on screen row `listY(true)`, one cell in from
   the left side, which is what the click-to-row math uses.
 - **Moving through the list** is the same in every tool of the family and
@@ -126,7 +126,7 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   pane's title (`[[panes]] title` in the manifest, the tool's name) already
   says which tool it is, and a placeholder says what the filter searches. Run
   on its own the prompt carries the tool's name. A build that is not a release
-  says `(dev)` after the counter, on the edge over the input, never inside the
+  says `(dev)` on the edge over the input, never inside the
   prompt.
   herdr sets `HERDR_PLUGIN_ENTRYPOINT_ID` for a plugin pane; that is how the
   two cases are told apart.
