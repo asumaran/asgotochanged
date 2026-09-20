@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -74,18 +73,6 @@ func (ri repoInfo) line(width int) string {
 		top = "…" + string(r[len(r)-(room-1):])
 	}
 	return top + "  " + branch
-}
-
-func homeRel(p string) string {
-	if h, err := os.UserHomeDir(); err == nil && h != "" {
-		if p == h {
-			return "~"
-		}
-		if strings.HasPrefix(p, h+"/") {
-			return "~" + strings.TrimPrefix(p, h)
-		}
-	}
-	return p
 }
 
 // resolveBase finds the branch the current one is compared against, like gcm
