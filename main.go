@@ -117,21 +117,6 @@ func enterPaneCwd() {
 
 // ---- preferences ----
 
-// stateDir is the herdr-injected per-plugin state dir; standalone runs fall
-// back to a fixed path under ~/.config/herdr.
-func stateDir() string {
-	if dir := os.Getenv("HERDR_PLUGIN_STATE_DIR"); dir != "" {
-		return dir
-	}
-	base := os.Getenv("XDG_CONFIG_HOME")
-	if base == "" {
-		if h, err := os.UserHomeDir(); err == nil {
-			base = filepath.Join(h, ".config")
-		}
-	}
-	return filepath.Join(base, "herdr", "asgotochanged-tui")
-}
-
 func loadDiffMode() string {
 	data, _ := os.ReadFile(filepath.Join(stateDir(), "diff"))
 	if d := strings.TrimSpace(string(data)); d == diffSBS || d == diffSingle {
@@ -189,3 +174,6 @@ func runDump(repo repoInfo, ch changes, query string, took time.Duration) {
 		fmt.Printf("%s  %-60s %s\n", f.status, f.path, stat)
 	}
 }
+
+// stateDir is where asgotochanged keeps its runtime state.
+func stateDir() string { return stateDirFor("asgotochanged") }
