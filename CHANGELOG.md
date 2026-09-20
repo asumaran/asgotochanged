@@ -1,3 +1,9 @@
+## v0.8.0 (2026-09-20)
+
+* refactor(state): share one state dir with the shell (3704347)
+* refactor(env): rename the editor to ASGOTOCHANGED_OPENER (4675403)
+* feat(search): match query terms in any order (cea5086)
+
 ## v0.7.0 (2026-09-19)
 
 * feat(ui): move the counter under the list (15d13a5)
