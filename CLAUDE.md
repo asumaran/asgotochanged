@@ -52,8 +52,11 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
   herdr's popup), the placeholder, the `(dev)` mark on the edge over the
   input. The same
   file in every tool of the family.
-- `helpfoot.go` — the help at the foot: the key that expands it, its height
-  and its lines cut to the width. The same file in every tool of the family.
+- `helpfoot.go` — the help line at the foot, cut to the width, and the key
+  that opens the panel. The same file in every tool of the family.
+- `panel.go` — the panel `f1` opens over the frame: options to change in
+  place and every key under them (`option`, `panel`, `panelLines`,
+  `overlay`). The same file in every tool of the family.
 - `listnav.go` — `listNav`: the keys that move the cursor through a list and
   where each one takes it, group headers skipped. The same file in every tool
   of the family.
@@ -121,7 +124,7 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   `ctrl+p`/`ctrl+n` a row, `pgup`/`pgdn` a page, `alt+↑`/`alt+↓` or
   `home`/`end` the ends. `home`/`end` are taken from the filter input's caret
   on purpose (`←`/`→` and `ctrl+e` still move it). The preview scrolls with
-  `shift+↑`/`shift+↓` only. The keys are listed in the expanded help.
+  `shift+↑`/`shift+↓` only. The keys are listed in the panel.
 - **The filter input** comes from `prompt.go` (the same file in every tool of
   the family). Inside herdr's popup the prompt is the arrow alone, because the
   pane's title (`[[panes]] title` in the manifest, the tool's name) already
@@ -131,14 +134,20 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   prompt.
   herdr sets `HERDR_PLUGIN_ENTRYPOINT_ID` for a plugin pane; that is how the
   two cases are told apart.
-- **Help**: the line at the foot shows the tool's own actions, `? help` and the
-  quit keys; `?` expands it into every key in columns and the main section
-  gives way (`helpfoot.go`, the same file in every tool of the family). `?`
-  expands only while the filter is empty, otherwise it is text, like `q`;
-  `f1` always does; `esc` folds the help before it quits. Moving, scrolling
-  and resizing live in the expanded help only, so the folded line stays short
-  enough for a narrow popup. A message (error, notice) takes the help's place
-  on one line.
+- **Help and options**: the line at the foot shows the tool's own actions,
+  the panel's key and the quit keys (`helpfoot.go`). `f1` opens the panel (`panel.go`, the same file in
+  every tool of the family): the options on top, to change with `←`/`→` or
+  `space`, and every key in columns under them, laid out by bubbles' `help`
+  from `FullHelp()`. The panel is spliced over the middle of the frame, which
+  keeps its size; while it is open it takes every key and the mouse, and `esc`
+  closes it before it does anything else. `?` is not a help key: the filter
+  has the focus, so it is text. Moving, scrolling and resizing are listed in
+  the panel only, so the help line stays short enough for a narrow popup. A
+  message (error, notice) takes the help line's place.
+  This tool's options are the renderer, the diff mode and the whitespace: `options()` lists them as things stand and
+  `setOption` is the one place that changes a setting, for the panel and for
+  the keys that kept a shortcut. A setting that is chosen once has no key of
+  its own; the panel is where it lives.
 - **Filter matches** look the same in every tool of the family and come from
   one place, `highlight.go` (the same file in each repo; it also owns `stSel`
   and `stMatch`): a match is the match color plus an underline on top of the
@@ -169,7 +178,7 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   <top>`, so paths are relative to the top whatever the subdirectory.
 - **Diff**: `git diff --no-color <merge-base> -- <path>` (untracked: `git diff
   --no-index -- /dev/null <path>`, whose exit status 1 means "there are
-  differences", not an error) rendered by hunk (`split` or `unified`) or by delta, whichever `ctrl+r` left
+  differences", not an error) rendered by hunk (`split` or `unified`) or by delta, whichever the panel left
   chosen (`renderer` in the state dir, hunk by default; `pickTool` falls back
   to delta when hunk is missing). With neither (`ASGOTOCHANGED_HUNK=none` and
   `ASGOTOCHANGED_DELTA=none`, or not installed) the same diff with
@@ -206,8 +215,8 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   list, which `-w` does not change.
 - **Copy**: `ctrl+y` copies the path of the file under the cursor, relative to
   the top as the list shows it (`copyCmd` in the shared `clipboard.go`), and
-  the help line confirms it for a moment (`flash.go`); it is in the expanded
-  help only, the folded line has no room left. `ASGOTOCHANGED_CLIPBOARD`
+  the help line confirms it for a moment (`flash.go`); it is listed in the
+  panel only, the help line has no room left. `ASGOTOCHANGED_CLIPBOARD`
   replaces the clipboard command (the tests point it at a stub).
 - **Diff mode**: auto / side by side / single column on `ctrl+t`, saved in the
   plugin state dir (`HERDR_PLUGIN_STATE_DIR`, standalone

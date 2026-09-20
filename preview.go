@@ -37,16 +37,6 @@ func fileDiff(mode string, width int, f changedFile) string {
 	return effectiveDiff(mode, width)
 }
 
-func nextDiffMode(mode string) string {
-	switch mode {
-	case diffAuto:
-		return diffSBS
-	case diffSBS:
-		return diffSingle
-	}
-	return diffAuto
-}
-
 type previewMsg struct {
 	key     string
 	content string

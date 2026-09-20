@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestPickToolAndNextTool(t *testing.T) {
+func TestPickTool(t *testing.T) {
 	if got := pickTool(toolHunk, "/bin/delta", "/bin/hunk", true); got != (diffTool{toolHunk, "/bin/hunk", true}) {
 		t.Errorf("hunk asked for and installed: %+v", got)
 	}
@@ -17,9 +17,6 @@ func TestPickToolAndNextTool(t *testing.T) {
 	}
 	if got := pickTool("", "", "/bin/hunk", false); !got.plain() || got.colorArg() != "--color=always" {
 		t.Errorf("no delta: git's own colors, %+v", got)
-	}
-	if nextTool(toolDelta) != toolHunk || nextTool(toolHunk) != toolDelta || nextTool("") != toolHunk {
-		t.Errorf("ctrl+r walks delta and hunk")
 	}
 }
 

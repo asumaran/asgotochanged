@@ -34,6 +34,8 @@ var (
 	keyCtrlT = tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
 	keyCtrlS = tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
 	keyCtrlY = tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl}
+	keyPanel = tea.KeyPressMsg{Code: tea.KeyF1}
+	keySpace = tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
 
 	keyShiftLeft  = tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModShift}
 	keyShiftRight = tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModShift}
@@ -398,8 +400,9 @@ func TestCopyKeyWithNothingUnderTheCursor(t *testing.T) {
 	}
 }
 
-// TestRendererToggle covers ctrl+r: hunk and delta take turns, the choice is
-// remembered, and a render made by one is not shown for the other.
+// TestRendererToggle covers the renderer, which is chosen in the panel: hunk
+// and delta take turns, the choice is remembered, and a render made by one is
+// not shown for the other.
 func TestRendererToggle(t *testing.T) {
 	m := hunkFixture(t)
 	m.deltaBin = "/nonexistent/delta"
@@ -407,9 +410,9 @@ func TestRendererToggle(t *testing.T) {
 		t.Fatalf("hunk is the default renderer: %+v", tool)
 	}
 	before := m.prevKey
-	m = press(m, tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	m = press(m, keyPanel, keySpace) // the renderer is the first option
 	if tool := m.tool(); tool.name != toolDelta || tool.bin != m.deltaBin {
-		t.Errorf("ctrl+r moves to delta: %+v", tool)
+		t.Errorf("the panel moves to delta: %+v", tool)
 	}
 	if m.flash.text != "diffs by delta" || loadRenderer() != toolDelta {
 		t.Errorf("flash = %q, remembered = %q", m.flash.text, loadRenderer())
@@ -417,14 +420,70 @@ func TestRendererToggle(t *testing.T) {
 	if m.prevKey == before || !strings.Contains(m.prevKey, "|delta|") {
 		t.Errorf("the preview key must name the renderer: %q then %q", before, m.prevKey)
 	}
-	m = press(m, tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	m = press(m, keySpace)
 	if m.tool().name != toolHunk || loadRenderer() != toolHunk {
-		t.Errorf("ctrl+r again is back on hunk: %+v", m.tool())
+		t.Errorf("again is back on hunk: %+v", m.tool())
 	}
 
 	m.hunkBin = ""
-	m = press(m, tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	m = press(m, keySpace)
 	if m.flash.text != "hunk not found" || m.tool().name != toolDelta {
 		t.Errorf("without hunk there is nothing to switch to: flash %q, tool %+v", m.flash.text, m.tool())
+	}
+}
+
+// TestPanel: f1 lays the options and the keys over a frame that keeps its
+// size, takes every key while it is open, and esc closes it before it quits.
+// `?` is text for the filter.
+func TestPanel(t *testing.T) {
+	next, _ := fixture(t).Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m := next.(model)
+	closed := strings.Split(stripANSI(m.render()), "\n")
+	if !strings.Contains(closed[len(closed)-2], "f1 options") || strings.Contains(closed[len(closed)-2], "^r") {
+		t.Errorf("the help line offers the panel and no renderer key: %q", closed[len(closed)-2])
+	}
+
+	m = press(m, keyPanel)
+	open := strings.Split(stripANSI(m.render()), "\n")
+	if len(open) != len(closed) {
+		t.Fatalf("the panel changed the frame's height: %d -> %d", len(closed), len(open))
+	}
+	for i, l := range open {
+		if ansi.StringWidth(l) != 120 {
+			t.Errorf("line %d is %d cells wide, want 120", i, ansi.StringWidth(l))
+		}
+	}
+	all := strings.Join(open, "\n")
+	for _, want := range []string{"╭─ options ", "Options", "▌ Diff renderer", "Diff mode", "^t", "Whitespace", "^s", "Keys", "scroll the diff", "esc close"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("the panel lacks %q:\n%s", want, all)
+		}
+	}
+	if open[0] != closed[0] || open[len(open)-1] != closed[len(closed)-1] {
+		t.Errorf("the frame's own edges should not move")
+	}
+
+	// Keys go to the panel, not to the filter or the list.
+	cursor := m.cursor
+	m = press(m, append(typed("zz"), keyDown, keyDown, keySpace)...)
+	if m.ti.Value() != "" || m.cursor != cursor {
+		t.Errorf("the panel should take every key: filter %q, cursor %d -> %d", m.ti.Value(), cursor, m.cursor)
+	}
+	if !m.ignoreWS || !loadIgnoreWS() {
+		t.Errorf("space on the third option should ignore the whitespace")
+	}
+	next, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m = next.(model)
+	if m.panel.open || cmd != nil {
+		t.Errorf("esc closes the panel and nothing else: open=%v cmd=%v", m.panel.open, cmd)
+	}
+
+	m = press(m, typed("why?")...)
+	if m.ti.Value() != "why?" || m.panel.open {
+		t.Errorf("? is text: filter %q, panel open %v", m.ti.Value(), m.panel.open)
+	}
+	m = press(m, tea.KeyPressMsg{Code: tea.KeyF1})
+	if !m.panel.open {
+		t.Errorf("f1 opens the panel whatever the filter says")
 	}
 }

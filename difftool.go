@@ -1,7 +1,7 @@
 package main
 
 // What draws a diff: delta or hunk, or git's own colors when neither is
-// around. ctrl+r walks the renderers, the choice is remembered, and both get
+// around. The panel offers both renderers, the choice is remembered, and both get
 // the same patch.
 //
 // This file is the same in every tool of the family that renders diffs.
@@ -53,14 +53,6 @@ func pickTool(pref, deltaBin, hunkBin string, ignoreWS bool) diffTool {
 		return diffTool{toolHunk, hunkBin, ignoreWS}
 	}
 	return diffTool{toolDelta, deltaBin, ignoreWS}
-}
-
-// nextTool is the preference ctrl+r moves to.
-func nextTool(pref string) string {
-	if pref == toolHunk {
-		return toolDelta
-	}
-	return toolHunk
 }
 
 // plain reports that git's own colors are the render.

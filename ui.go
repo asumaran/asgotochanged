@@ -63,7 +63,6 @@ type keyMap struct {
 	Edit     key.Binding
 	DiffMode key.Binding
 	Space    key.Binding
-	Tool     key.Binding
 	Copy     key.Binding
 	Quit     key.Binding
 	PrevUp   key.Binding
@@ -74,21 +73,21 @@ type keyMap struct {
 	Help     key.Binding
 }
 
-// ShortHelp is the folded help line: the tool's own actions, the help and the
-// quit keys. Moving, scrolling and resizing are in the expanded help, so the
-// line stays short enough for a narrow popup (a cut line loses the quit keys
+// ShortHelp is the help line: the tool's own actions, the panel's key and the
+// quit keys. Moving, scrolling and resizing are in the panel, so the line
+// stays short enough for a narrow popup (a cut line loses the quit keys
 // first).
 func (k keyMap) ShortHelp() []key.Binding {
 	return []key.Binding{k.Filter, k.Edit, k.DiffMode, k.Space, k.Help, k.Quit}
 }
 
-// FullHelp is what `?` expands the help into, one column per group: the
-// filter and the preview, the list, the tool's actions, help and quit.
+// FullHelp is the panel's list of keys, one column per group: the filter and
+// the preview, the list, the tool's actions, the panel and quit.
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Filter, k.PrevUp, k.Shrink},
 		{k.Nav.Up, k.Nav.PageUp, k.Nav.Top},
-		{k.Edit, k.DiffMode, k.Tool, k.Space, k.Copy},
+		{k.Edit, k.DiffMode, k.Space, k.Copy},
 		{k.Help, k.Quit},
 	}
 }
@@ -99,7 +98,6 @@ func defaultKeys() keyMap {
 		Edit:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "edit")),
 		DiffMode: key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("^t", "diff mode")),
 		Space:    key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("^s", "whitespace")),
-		Tool:     key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("^r", "diffs by delta / hunk")),
 		Copy:     key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("^y", "copy the path")),
 		Quit:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc/q", "quit")),
 		PrevUp:   key.NewBinding(key.WithKeys("shift+up"), key.WithHelp("⇧↑/⇧↓", "scroll the diff")),
@@ -109,7 +107,7 @@ func defaultKeys() keyMap {
 		// Help-only entry: a binding without keys is disabled and the help
 		// bubble would skip it. Nothing ever matches against it.
 		Filter: key.NewBinding(key.WithKeys("type"), key.WithHelp("type", "filter")),
-		Help:   helpKey,
+		Help:   helpBinding(true),
 	}
 }
 
@@ -131,7 +129,7 @@ type model struct {
 	loadErr  string
 	deltaBin string // the renderers found at startup (difftool.go); either may be ""
 	hunkBin  string
-	toolPref string // the renderer ctrl+r chose, remembered between runs
+	toolPref string // the renderer chosen in the panel, remembered between runs
 	diffMode string // auto | sbs | single
 	ignoreWS bool   // git's -w: changes in whitespace are left out of the diffs
 
@@ -141,6 +139,7 @@ type model struct {
 	// ui
 	notice string // error on the help line, cleared by the next key
 	flash  flash  // confirmation on the help line, cleared by a timer (flash.go)
+	panel  panel  // options and keys, over the frame while it is open (panel.go)
 	ti     textinput.Model
 	listVP viewport.Model
 	prevVP viewport.Model
@@ -208,37 +207,8 @@ func (m *model) detailsW() int { _, w := splitWidths(m.innerW(), m.split); retur
 func (m *model) prevW() int    { return max(10, m.detailsW()-2) }
 
 // bodyH is the height of the main section: everything but the frame's own
-// lines (with the context line) and the help.
-func (m *model) bodyH() int { return max(1, m.height-frameRows(true)-m.footH()) }
-
-// footH is the height of the foot: a message takes one line, the help more
-// while `?` has it expanded; the main section keeps at least minBodyH.
-func (m *model) footH() int {
-	if m.footMsg() != "" {
-		return 1
-	}
-	return helpHeight(m.help, m.keys, m.height-frameRows(true)-minBodyH)
-}
-
-const minBodyH = 4
-
-func (m *model) toggleHelp() tea.Cmd {
-	m.help.ShowAll = !m.help.ShowAll
-	m.resize()
-	m.renderList()
-	return m.updatePreview()
-}
-
-// reflow lays the sections out again after the help line changed height: a
-// flash folds an expanded help for as long as it shows.
-func (m *model) reflow() tea.Cmd {
-	if !m.help.ShowAll {
-		return nil
-	}
-	m.resize()
-	m.renderList()
-	return m.updatePreview()
-}
+// lines (with the context line) and the help line.
+func (m *model) bodyH() int { return max(1, m.height-frameRows(true)-1) }
 
 func (m *model) resize() {
 	m.listVP.SetWidth(m.listW())
@@ -389,14 +359,44 @@ func (m *model) tool() diffTool {
 	return pickTool(m.toolPref, m.deltaBin, m.hunkBin, m.ignoreWS)
 }
 
-// toggleTool is ctrl+r: the other renderer, remembered.
-func (m *model) toggleTool() tea.Cmd {
-	if m.hunkBin == "" {
-		return m.setFlash("hunk not found")
+// options is what the panel offers, as things stand. The renderer is chosen
+// there and nowhere else; the diff mode and the whitespace keep their keys.
+func (m *model) options() []option {
+	cur := func(on bool) int {
+		if on {
+			return 1
+		}
+		return 0
 	}
-	m.toolPref = nextTool(m.toolPref)
-	saveRenderer(m.toolPref)
-	return tea.Batch(m.updatePreview(), m.setFlash("diffs by "+m.toolPref))
+	diff := map[string]int{diffAuto: 0, diffSBS: 1, diffSingle: 2}
+	return []option{
+		{id: "renderer", label: "Diff renderer", values: []string{toolDelta, toolHunk}, cur: cur(m.toolPref == toolHunk)},
+		{id: "diff", label: "Diff mode", values: []string{"auto", "side-by-side", "single column"}, cur: diff[m.diffMode], key: "^t"},
+		{id: "whitespace", label: "Whitespace", values: []string{"show", "ignore"}, cur: cur(m.ignoreWS), key: "^s"},
+	}
+}
+
+// setOption changes a setting, remembers it and says so. The keys and the
+// panel both come through here.
+func (m *model) setOption(id string, v int) tea.Cmd {
+	switch id {
+	case "renderer":
+		if m.hunkBin == "" {
+			return m.setFlash("hunk not found")
+		}
+		m.toolPref = []string{toolDelta, toolHunk}[v]
+		saveRenderer(m.toolPref)
+		return tea.Batch(m.updatePreview(), m.setFlash("diffs by "+m.toolPref))
+	case "diff":
+		m.diffMode = []string{diffAuto, diffSBS, diffSingle}[v]
+		saveDiffMode(m.diffMode)
+		return tea.Batch(m.setFlash("diff: "+diffLabel(m.diffMode, m.prevW())), m.updatePreview())
+	case "whitespace":
+		m.ignoreWS = v == 1
+		saveIgnoreWS(m.ignoreWS)
+		return tea.Batch(m.setFlash("whitespace: "+wsLabel(m.ignoreWS)), m.updatePreview())
+	}
+	return nil
 }
 
 func (m *model) startRender(f changedFile, key, mode string) tea.Cmd {
@@ -569,16 +569,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.updatePreview()
 
 	case flashMsg:
-		return m, tea.Batch(m.setFlash(string(msg)), m.reflow())
+		return m, m.setFlash(string(msg))
 
 	case clearFlashMsg:
 		m.flash.clear(msg)
-		return m, m.reflow()
+		return m, nil
 
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
 	case tea.MouseWheelMsg:
+		if m.panel.open {
+			return m, nil
+		}
 		// Over the list the wheel moves the selection, as in asgitlog; anywhere
 		// else it scrolls the preview.
 		if m.overList(msg.X, msg.Y) {
@@ -591,6 +594,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.MouseClickMsg:
+		if m.panel.open {
+			return m, nil
+		}
 		return m.handleClick(msg)
 
 	default:
@@ -605,10 +611,15 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case msg.String() == "ctrl+c":
 		return m, tea.Quit
-	case foldsHelp(msg, m.help):
-		return m, m.toggleHelp() // esc folds the help before it quits
-	case isHelpKey(msg, m.ti.Value()):
-		return m, m.toggleHelp()
+	case m.panel.open:
+		// The panel takes every key: esc closes it before it quits anything.
+		if a := m.panel.update(msg, m.options()); a.id != "" {
+			return m, m.setOption(a.id, a.value)
+		}
+		return m, nil
+	case isHelpKey(msg):
+		m.panel.toggle()
+		return m, nil
 	case msg.String() == "q" && m.ti.Value() == "":
 		// q quits only while the filter is empty; otherwise it is text.
 		return m, tea.Quit
@@ -617,15 +628,9 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Edit):
 		return m, m.edit()
 	case key.Matches(msg, m.keys.DiffMode):
-		m.diffMode = nextDiffMode(m.diffMode)
-		saveDiffMode(m.diffMode)
-		return m, tea.Batch(m.setFlash("diff: "+diffLabel(m.diffMode, m.prevW())), m.updatePreview())
+		return m, m.setOption("diff", nextValue(m.options(), "diff"))
 	case key.Matches(msg, m.keys.Space):
-		m.ignoreWS = !m.ignoreWS
-		saveIgnoreWS(m.ignoreWS)
-		return m, tea.Batch(m.setFlash("whitespace: "+wsLabel(m.ignoreWS)), m.updatePreview())
-	case key.Matches(msg, m.keys.Tool):
-		return m, m.toggleTool()
+		return m, m.setOption("whitespace", nextValue(m.options(), "whitespace"))
 	case key.Matches(msg, m.keys.Copy):
 		if f := m.current(); f != nil {
 			return m, copyCmd("asgotochanged", "", f.path)
@@ -691,10 +696,11 @@ func (m model) render() string {
 	out := frameHead(w, stInfo.Render(m.repo.line(max(0, w-4))), withDevMark(m.status()), m.ti.View())
 	out = append(out, splitMain(m.listLines(), strings.Split(m.prevVP.View(), "\n"),
 		m.listW(), m.detailsW(), m.counter(), diffEdge(m.ignoreWS, scrollPos(&m.prevVP)))...)
-	for _, l := range m.footLines() {
-		out = append(out, framed(w, l))
+	out = append(out, framed(w, m.footLine()), hline(w, "╰", "╯", "", ""))
+	if m.panel.open {
+		keys := keyLines(m.help, m.keys, w-10)
+		out = overlay(out, panelLines(m.options(), m.panel.cursor, keys, w-4, len(out)-2), w)
 	}
-	out = append(out, hline(w, "╰", "╯", "", ""))
 	return strings.Join(out, "\n")
 }
 
@@ -753,9 +759,9 @@ func (m model) footMsg() string {
 	return ""
 }
 
-func (m model) footLines() []string {
+func (m model) footLine() string {
 	if msg := m.footMsg(); msg != "" {
-		return []string{msg}
+		return msg
 	}
-	return helpLines(m.help, m.keys, m.width-4, m.footH())
+	return helpLine(m.help, m.keys, m.width-4)
 }

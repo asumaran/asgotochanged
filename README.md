@@ -24,7 +24,7 @@ diffs, by [hunk](https://hunk.dev) or [delta](https://github.com/dandavison/delt
 │ ?  notes/PLAN.md          │ ▌15    -  return subtotal                                                │
 │                           │ ▌   15 +  return subtotal + tax(subtotal)                                │
 ├───────────────────── 4/4 ─┴─────────────────────────────────────────────────────────────────── 5/64 ─┤
-│ type filter • enter edit • ^t diff mode • ^s whitespace • ⇧↓ scroll diff • ⇧←/⇧→ resize • esc/q quit │
+│ type filter • enter edit • ^t diff mode • ^s whitespace • f1 options • esc/q quit                    │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -78,7 +78,7 @@ branch is compared against.
 | --- | --- |
 | `enter` | open the file in the editor; quitting the editor comes back to the list |
 | `ctrl+t` | diff mode: auto, side by side, single column (remembered) |
-| `ctrl+r` | render the diffs with hunk or with delta, as in asgitlog (remembered; hunk by default, delta when hunk is not installed) |
+| panel: Diff renderer | render the diffs with hunk or with delta, as in asgitlog (remembered; hunk by default, delta when hunk is not installed) |
 | `ctrl+s` | show or ignore whitespace changes, like GitHub's "Hide whitespace" (`git diff -w`, remembered); `[-w]` on the diff's bottom edge while it is on |
 | `ctrl+y` | copy the path of the file under the cursor, relative to the repository root as the list shows it; the help line confirms it for a moment |
 | `↑/↓`, `ctrl+p`/`ctrl+n` | move the cursor |
@@ -86,7 +86,7 @@ branch is compared against.
 | `alt+↑`/`alt+↓`, Home/End | top or bottom of the list |
 | `shift+↓`/`shift+↑`, mouse wheel over the diff | scroll the diff |
 | mouse wheel over the list | move the cursor |
-| `?` while the filter is empty, `f1` | expand the help line into every key (`esc` folds it) |
+| `f1` | open the panel: the renderer, the diff mode and the whitespace to change in place, and every key (`esc` closes it) |
 | `shift+←`/`shift+→` | resize the list; the split is remembered (the list takes a quarter of the width by default) |
 | click | select a row |
 | `esc`, `q` with an empty filter | quit |

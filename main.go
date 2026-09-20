@@ -107,7 +107,7 @@ func saveDiffMode(mode string) {
 	_ = os.WriteFile(filepath.Join(stateDir(), "diff"), []byte(mode+"\n"), 0o644)
 }
 
-// loadRenderer is the renderer ctrl+r left chosen. hunk is what this tool
+// loadRenderer is the renderer left chosen in the panel. hunk is what this tool
 // drew its diffs with before it had a choice, so it stays the default.
 func loadRenderer() string {
 	data, _ := os.ReadFile(filepath.Join(stateDir(), "renderer"))

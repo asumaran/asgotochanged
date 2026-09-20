@@ -114,7 +114,7 @@ def done():
     print("\n%d failure(s)" % len(failures))
     sys.exit(1 if failures else 0)
 
-CTRL_A, CTRL_S, CTRL_T, CTRL_Y, ESC, ENTER, TAB, DOWN, UP = b"\x01", b"\x13", b"\x14", b"\x19", b"\x1b", b"\r", b"\t", b"\x1b[B", b"\x1b[A"
+CTRL_T, CTRL_Y, PANEL, ESC, ENTER, TAB, DOWN, UP = b"\x14", b"\x19", b"\x1bOP", b"\x1b", b"\r", b"\t", b"\x1b[B", b"\x1b[A"
 
 # ---------- sandbox: git checkout, editor stub ----------
 repo = os.path.join(home, "wt", "shop", "fix-cart-total")
@@ -203,8 +203,18 @@ f = s.send(ENTER, 0.6)
 check(s.proc.poll() is None and "nothing to edit" in f[-2] and len(edited()) == 1, "a deleted file is not handed to the editor: %r" % f[-2])
 f = s.send(CTRL_T, 0.6)
 check("diff: side-by-side" in f[-2], "ctrl+t cycles the diff mode and says so: %r" % f[-2])
-f = s.send(b"\x12", 0.6)   # ctrl+r: the other renderer; here both are turned off
-check("hunk not found" in f[-2], "ctrl+r says there is no other renderer to switch to: %r" % f[-2])
+s.pump(2.2)   # the flash gives the help line back
+rows = len(f)
+f = s.send(PANEL, 0.6); dump("panel", f)
+check(len(f) == rows and any("╭─ options " in l for l in f) and any("▌ Diff renderer" in l for l in f) and any("scroll the diff" in l for l in f),
+      "f1 lays the options and the keys over the frame, which keeps its size")
+f = s.send(b"zz ", 0.6)   # space on the renderer; here both are turned off
+check("hunk not found" in f[-2], "space on the renderer says there is no other one: %r" % f[-2])
+f = s.send(ESC, 0.5)
+check(s.proc.poll() is None and not any("╭─ options " in l for l in f), "esc closes the panel, not the popup")
+check(prompt(f) == "asgotochanged ❯ old", "the panel took the keys, the filter did not: %r" % prompt(f))
+f = s.send(b"?", 0.5)
+check(prompt(f) == "asgotochanged ❯ old?", "? is text for the filter: %r" % prompt(f))
 os.write(s.master, ESC); s.pump(0.4)
 check(s.finish() == 0, "esc quits")
 
