@@ -15,7 +15,7 @@ DEMO_SOURCE_REPO="$HOME/Developer/shopnest"
 DEMO_CLONE="$HOME/.cache/asgotochanged-demo/shopnest"
 DEMO_START_CWD="$DEMO_CLONE"
 # Enter opens the editor on camera: a bare nvim, without the user's plugins.
-DEMO_SESSION_ENV=("ASGOTOCHANGED_EDITOR=nvim --clean")
+DEMO_SESSION_ENV=("ASGOTOCHANGED_OPENER=nvim --clean")
 
 # Same sidebar as the other demos: personal repos only.
 REPOS=(

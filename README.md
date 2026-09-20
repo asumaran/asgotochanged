@@ -58,7 +58,7 @@ The popup works on the repository of the pane that was focused when it opened.
 
 ## Usage
 
-The filter input is focused on open, so just type; it matches the paths. One
+The filter input is focused on open, so just type; it matches the paths. A query of several words matches them in any order (`login fix` finds "fix login flow"), and a word starting with `'` must occur as typed instead of fuzzily (`'dex`). One
 row per file, by path, with its status:
 
 | status | meaning |
@@ -125,7 +125,7 @@ scripts/pty-check.py ./asgotochanged   # end-to-end TUI check on a pty (python3 
 herdr plugin link "$PWD"   # register the working copy (no build step)
 ```
 
-`ASGOTOCHANGED_EDITOR` replaces the editor command and `ASGOTOCHANGED_HUNK` the
+`ASGOTOCHANGED_OPENER` replaces the editor command and `ASGOTOCHANGED_HUNK` the
 hunk binary (`none` turns hunk off). `ASGOTOCHANGED_POPUP_WIDTH` /
 `ASGOTOCHANGED_POPUP_HEIGHT` override the popup size from the manifest.
 

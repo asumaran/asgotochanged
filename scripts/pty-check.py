@@ -7,7 +7,7 @@ in a throwaway sandbox: a fake HOME, a real git checkout with a local `main`
 as the base and a feature branch (modified, added, deleted, pending and
 untracked files), hunk turned off (ASGOTOCHANGED_HUNK=none: git's own diff, so
 the frames do not depend on hunk's looks) and a stub instead of the editor
-(ASGOTOCHANGED_EDITOR) that logs the path and appends a line to the file. It
+(ASGOTOCHANGED_OPENER) that logs the path and appends a line to the file. It
 never touches a real repository and never opens an editor.
 
 Usage: scripts/pty-check.py ./asgotochanged   (needs python3 + pyte)
@@ -136,7 +136,7 @@ editor = write(os.path.join(SANDBOX, "editor"),
 
 def session(args=()):
     env = dict(git_env, TERM="xterm-256color", COLORTERM="truecolor", ASGOTOCHANGED_HUNK="none",
-               ASGOTOCHANGED_EDITOR=editor, XDG_CONFIG_HOME=os.path.join(home, ".config"),
+               ASGOTOCHANGED_OPENER=editor, XDG_CONFIG_HOME=os.path.join(home, ".config"),
                XDG_CACHE_HOME=os.path.join(home, ".cache"))
     for k in ("HERDR_PLUGIN_STATE_DIR", "HERDR_PLUGIN_ENTRYPOINT_ID", "HERDR_PLUGIN_CONTEXT_JSON"):
         env.pop(k, None)

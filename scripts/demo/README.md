@@ -13,7 +13,7 @@ asdemo doctor            # check the toolchain first
   `~/Developer/shopnest` into `~/.cache/asgotochanged-demo/shopnest` and scripts
   a `feat/cart-tax` branch on it: a committed change, an added and a deleted
   file, a pending edit and an untracked note. The real repository is never
-  touched, and `demo_teardown` removes the clone. `ASGOTOCHANGED_EDITOR` is
+  touched, and `demo_teardown` removes the clone. `ASGOTOCHANGED_OPENER` is
   `nvim --clean`, so the editor shows without the user's plugins.
   `demo_setup` renders nothing ahead: the first popup shows hunk's highlight
   coming in, unless the disk cache already holds those patches.

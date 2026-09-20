@@ -208,7 +208,7 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   cut the other at the middle, so those go single column (`fileDiff`). An
   explicit mode is obeyed whatever the file.
 - **Editing**: `tea.ExecProcess` hands the terminal to the editor
-  (`ASGOTOCHANGED_EDITOR`, else `nvim`, else `$EDITOR`, else `vi`) with the
+  (`ASGOTOCHANGED_OPENER`, else `nvim`, else `$EDITOR`, else `vi`) with the
   absolute path, cwd at the top. When it exits the list is loaded again
   (`reloadCmd`): the edit can change a diff, add or remove rows. The cursor
   stays on the same path (`refilter(true)`). A file that does not exist in the
@@ -246,7 +246,7 @@ For end-to-end verification without a TTY, `scripts/pty-check.py
 ./asgotochanged` (python3 + `pyte`) spawns the binary on a pty, answers the
 terminal queries, replays keystrokes and asserts on pyte-rendered frames, in a
 throwaway sandbox (fake `HOME`, a real git checkout, hunk off, a stub as
-`ASGOTOCHANGED_EDITOR` that logs the path and appends a line to the file). The
+`ASGOTOCHANGED_OPENER` that logs the path and appends a line to the file). The
 v2 renderer repaints with scroll regions, which pyte ignores, so the driver
 forces a full redraw (pty resize + SIGWINCH) before reading a frame.
 
