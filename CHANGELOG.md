@@ -1,3 +1,7 @@
+## v0.10.0 (2026-09-20)
+
+* feat(ui): open an options and keys panel with f1 (e9772b0)
+
 ## v0.9.0 (2026-09-20)
 
 * feat: render with delta or hunk, copy with ctrl+y (1b78461)
