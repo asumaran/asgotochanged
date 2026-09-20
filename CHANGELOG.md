@@ -1,3 +1,7 @@
+## v0.9.0 (2026-09-20)
+
+* feat: render with delta or hunk, copy with ctrl+y (1b78461)
+
 ## v0.8.0 (2026-09-20)
 
 * refactor(state): share one state dir with the shell (3704347)
