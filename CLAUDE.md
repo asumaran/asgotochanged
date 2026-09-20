@@ -202,7 +202,7 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   list, which `-w` does not change.
 - **Diff mode**: auto / side by side / single column on `ctrl+t`, saved in the
   plugin state dir (`HERDR_PLUGIN_STATE_DIR`, standalone
-  `~/.config/herdr/asgotochanged-tui`). Auto goes side by side from 120 columns
+  `~/.local/state/herdr/plugins/asumaran.asgotochanged`). Auto goes side by side from 120 columns
   of diff area, asgitlog's threshold, except for a file that was only added or
   only deleted (`A`, `D`, `?`): side by side would leave one half empty and
   cut the other at the middle, so those go single column (`fileDiff`). An

@@ -138,7 +138,7 @@ def session(args=()):
     env = dict(git_env, TERM="xterm-256color", COLORTERM="truecolor", ASGOTOCHANGED_HUNK="none",
                ASGOTOCHANGED_OPENER=editor, XDG_CONFIG_HOME=os.path.join(home, ".config"),
                XDG_CACHE_HOME=os.path.join(home, ".cache"))
-    for k in ("HERDR_PLUGIN_STATE_DIR", "HERDR_PLUGIN_ENTRYPOINT_ID", "HERDR_PLUGIN_CONTEXT_JSON"):
+    for k in ("HERDR_PLUGIN_STATE_DIR", "XDG_STATE_HOME", "HERDR_PLUGIN_ENTRYPOINT_ID", "HERDR_PLUGIN_CONTEXT_JSON"):
         env.pop(k, None)
     if os.path.exists(edit_log): os.remove(edit_log)
     return Session(env, args=args, cwd=os.path.join(repo, "src"))   # a subdirectory: paths stay relative to the top
