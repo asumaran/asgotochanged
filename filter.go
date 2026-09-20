@@ -28,13 +28,10 @@ func filterFiles(files []changedFile, q string) []fileRow {
 	for i, f := range files {
 		paths[i] = f.path
 	}
-	hits := map[int]fileRow{}
-	for _, mt := range findTight(q, paths) {
-		hits[mt.Index] = fileRow{f: files[mt.Index], score: mt.Score, idx: append([]int(nil), mt.MatchedIndexes...)}
-	}
+	hits := findFields(q, paths)
 	for i := range files {
-		if r, ok := hits[i]; ok {
-			rows = append(rows, r)
+		if h, ok := hits[i]; ok {
+			rows = append(rows, fileRow{f: files[i], score: h.Score, idx: h.Any[0]})
 		}
 	}
 	return rank(rows, func(r fileRow) int { return r.score }, nil) // a search result: best match first
