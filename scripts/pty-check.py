@@ -152,15 +152,20 @@ def listw(): return max(COLS - 3 - (COLS - 2) * 75 // 100, 10)   # the default s
 def divider(f): return f[5].index("│", 1)
 def left(f):  return [l[1:1 + listw()].rstrip() for l in f[5:-3] if l[1:1 + listw()].strip()]
 def right(f): return "\n".join(l[listw() + 3:-1].rstrip() for l in f[5:-3])
-def prompt(f): return f[3].strip("│ ").rstrip()
-def counter(f): return f[2].strip("├┤─ ")
+# The input line: the prompt and what is typed (or the placeholder). A build
+# that is not a release says "(dev)" after the counter, on the edge over the
+# input; devmark() says so.
+def prompt(f): return f[3].strip("│ ").rstrip().removesuffix("(dev)").rstrip()
+def devmark(f): return any(l.rstrip("╮┤─ ").endswith("(dev)") for l in f[:4])
+def counter(f): return f[2].strip("├┤─ ").removesuffix("(dev)").rstrip()
 
 print("== asgotochanged pty driver (%dx%d) ==" % (COLS, ROWS))
 
 # ---------- run 1: list, context, diff, filter, edit and come back ----------
 s = session()
-f = s.start("asgotochanged (dev) ❯"); dump("open", f)
-check(prompt(f) == "asgotochanged (dev) ❯", "prompt line is clean: %r" % f[3])
+f = s.start("asgotochanged ❯"); dump("open", f)
+check(prompt(f) == "asgotochanged ❯ Search by path…", "prompt line is clean: %r" % f[3])
+check(devmark(f), "a dev build says so after the counter, on the edge over the input")
 check(b"\x1b[?1049h" in s.raw, "program entered the alt screen")
 check("~/wt/shop/fix-cart-total  fix/cart-total" in f[1], "the context line names the checkout and the branch: %r" % f[1])
 check(counter(f) == "4/4 [vs main]", "counter and base on the edge: %r" % counter(f))
@@ -173,7 +178,7 @@ check("-export const total = (items) => items.length" in right(f) and "+export c
       "the diff is against the merge base")
 f = s.send(ENTER, 1.2); dump("after the editor", f)
 check(edited() == [os.path.join(repo, "src", "total.ts")], "enter hands the file to the editor: %r" % edited())
-check(s.proc.poll() is None and prompt(f) == "asgotochanged (dev) ❯ total", "quitting the editor comes back to the list: %r" % f[3])
+check(s.proc.poll() is None and prompt(f) == "asgotochanged ❯ total", "quitting the editor comes back to the list: %r" % f[3])
 check("+// edited" in right(f), "the diff is rendered again after the edit")
 
 # a deleted file has nothing to edit
@@ -189,8 +194,8 @@ check(s.finish() == 0, "esc quits")
 
 # ---------- run 2: mouse, initial query, q ----------
 s = session(args=("tax",))
-f = s.start("asgotochanged (dev) ❯")
-check(prompt(f) == "asgotochanged (dev) ❯ tax" and left(f) == ["▌A  src/tax.ts"], "a positional argument is the initial filter: %r" % left(f))
+f = s.start("asgotochanged ❯")
+check(prompt(f) == "asgotochanged ❯ tax" and left(f) == ["▌A  src/tax.ts"], "a positional argument is the initial filter: %r" % left(f))
 for _ in range(3): s.send(b"\x7f", 0.1)
 f = s.send(b"\x1b[<0;5;8M\x1b[<0;5;8m", 0.6)   # SGR press+release on the third list line
 check(left(f)[2].startswith("▌A  src/tax.ts") and edited() == [], "a click selects the row and opens nothing: %r" % left(f))
@@ -199,7 +204,7 @@ check(s.finish() == 0, "q quits with an empty filter")
 
 # ---------- run 3: the divider moves and stays where it was left ----------
 s = session()
-f = s.start("asgotochanged (dev) ❯"); at = divider(f)
+f = s.start("asgotochanged ❯"); at = divider(f)
 f = s.send(b"\x1b[1;2C", 0.6); grown = divider(f)   # shift+right
 check(grown > at and all(len(l) == COLS for l in f), "shift+right grows the list: %d -> %d" % (at, grown))
 f = s.send(b"\x1b[1;2D", 0.6)                        # shift+left
@@ -207,7 +212,7 @@ check(divider(f) == at, "shift+left shrinks it back: %d" % divider(f))
 s.send(b"\x1b[1;2C", 0.6)
 os.write(s.master, ESC); s.pump(0.4); s.finish()
 s = session()
-f = s.start("asgotochanged (dev) ❯")
+f = s.start("asgotochanged ❯")
 check(divider(f) == grown, "the next run opens with the same split: %d" % divider(f))
 s.send(b"\x1b[1;2D", 0.6)
 os.write(s.master, ESC); s.pump(0.4); s.finish()
@@ -215,7 +220,7 @@ os.write(s.master, ESC); s.pump(0.4); s.finish()
 # ---------- run 4: nothing changed on the base branch ----------
 git("stash", "-q", "-u"); git("checkout", "-q", "main")
 s = session()
-f = s.start("asgotochanged (dev) ❯"); dump("on the base", f)
+f = s.start("asgotochanged ❯"); dump("on the base", f)
 check(counter(f) == "0/0 [vs main]" and "No changes vs main" in "\n".join(f), "the base branch has nothing to list")
 os.write(s.master, ESC); s.pump(0.4); s.finish()
 

@@ -16,7 +16,7 @@ Sibling of [asgitlog](https://github.com/asumaran/asgitlog) (same frame, same
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ ~/wt/shop/fix-cart-total  fix/cart-total -> origin/fix/cart-total (ahead 2, behind 0)                │
 ├──────────────────────────────────────────────────────────────────────────────── 4/4 [vs origin/main] ─┤
-│ asgotochanged ❯                                                                                      │
+│ ❯ Search by path…                                                                                    │
 ├───────────────────────────┬──────────────────────────────────────────────────────────────────────────┤
 │▌M  src/cart/total.ts      │  src/cart/total.ts                                      +12 -3           │
 │ A  src/cart/tax.ts        │ ▌··· 13 unchanged lines ···                                              │

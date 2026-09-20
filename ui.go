@@ -32,15 +32,13 @@ func truncate(s string, width int) string {
 // ---- styles ----
 
 var (
-	stPrompt = lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true)
-	stDev    = lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Bold(true)
-	stDim    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	stTitle  = lipgloss.NewStyle().Bold(true)
-	stError  = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
-	stInfo   = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-	stScope  = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	stCount  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	stFlash  = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	stDim   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	stTitle = lipgloss.NewStyle().Bold(true)
+	stError = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+	stInfo  = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	stScope = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	stCount = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	stFlash = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
 	// statuses, after git's own palette
 	stAdded     = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
@@ -172,7 +170,7 @@ func newModel(repo repoInfo, ch changes, loadErr, diffMode, hunkBin, query strin
 		diffMode: diffMode,
 		ignoreWS: loadIgnoreWS(),
 		split:    loadSplit(stateDir()),
-		ti:       newFilterInput(),
+		ti:       newFilterInput("asgotochanged", "Search by path…"),
 		listVP:   viewport.New(viewport.WithWidth(30), viewport.WithHeight(16)),
 		prevVP:   viewport.New(viewport.WithWidth(60), viewport.WithHeight(16)),
 		help:     help.New(),
@@ -188,29 +186,6 @@ func newModel(repo repoInfo, ch changes, loadErr, diffMode, hunkBin, query strin
 	m.resize()
 	m.renderList()
 	return m
-}
-
-// newFilterInput builds the focused filter textinput with the asgotochanged
-// prompt. The prompt string already carries its colors, so the prompt style
-// is left empty.
-func newFilterInput() textinput.Model {
-	ti := textinput.New()
-	ti.Prompt = promptText()
-	st := ti.Styles()
-	st.Focused.Prompt = lipgloss.NewStyle()
-	st.Blurred.Prompt = lipgloss.NewStyle()
-	ti.SetStyles(st)
-	ti.Focus()
-	return ti
-}
-
-// promptText builds the textinput prompt, with an orange "(dev)" marker on
-// non-release builds.
-func promptText() string {
-	if strings.HasPrefix(version, "v") {
-		return stPrompt.Render("asgotochanged ❯ ")
-	}
-	return stPrompt.Render("asgotochanged (") + stDev.Render("dev") + stPrompt.Render(") ❯ ")
 }
 
 func (m *model) current() *changedFile {
@@ -262,6 +237,7 @@ func (m *model) resize() {
 	m.prevVP.SetWidth(m.prevW())
 	m.prevVP.SetHeight(m.bodyH())
 	m.help.SetWidth(max(0, m.width-4))
+	sizeInput(&m.ti, m.width-4)
 }
 
 // resizeList moves the divider between the list and the preview by one step.
@@ -690,7 +666,7 @@ func (m model) View() tea.View {
 // the one thing the rest of the screen cannot say: which checkout and branch.
 func (m model) render() string {
 	w := m.width
-	out := frameHead(w, stInfo.Render(m.repo.line(max(0, w-4))), m.counter(), m.ti.View())
+	out := frameHead(w, stInfo.Render(m.repo.line(max(0, w-4))), withDevMark(m.counter()), m.ti.View())
 	out = append(out, splitMain(m.listLines(), strings.Split(m.prevVP.View(), "\n"),
 		m.listW(), m.detailsW(), listPos(&m.listVP, nil), diffEdge(m.ignoreWS, scrollPos(&m.prevVP)))...)
 	for _, l := range m.footLines() {
