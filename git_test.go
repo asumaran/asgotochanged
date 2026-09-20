@@ -116,7 +116,7 @@ func TestRenderDiffPlainGit(t *testing.T) {
 		"old.txt":         "-gone soon",
 		"src/mod file.go": "+var x = 1",
 	} {
-		out, err := renderDiff(context.Background(), dir, ch.mergeBase, byPath[path], 80, false, false, "", nil)
+		out, err := renderDiff(context.Background(), dir, ch.mergeBase, byPath[path], 80, false, diffTool{name: toolDelta}, nil)
 		if err != nil || !strings.Contains(stripANSI(out), want) {
 			t.Errorf("%s: err = %v, diff lacks %q:\n%s", path, err, want, stripANSI(out))
 		}
@@ -128,7 +128,7 @@ func TestRenderDiffCancelled(t *testing.T) {
 	ch, _ := loadChanges(context.Background())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	msg := renderPreviewCmd(ctx, dir, ch.mergeBase, ch.files[0], "k", 80, diffSingle, false, "")()
+	msg := renderPreviewCmd(ctx, dir, ch.mergeBase, ch.files[0], "k", 80, diffSingle, diffTool{name: toolDelta})()
 	if pm, ok := msg.(previewMsg); !ok || !pm.cancelled {
 		t.Errorf("msg = %+v, want a cancelled render", msg)
 	}
@@ -147,26 +147,27 @@ func TestRepoInfo(t *testing.T) {
 
 func TestDiskCacheIsAddressedByThePatch(t *testing.T) {
 	c := &diskCache{dir: t.TempDir()}
+	tool := diffTool{name: toolHunk, bin: "/bin/hunk"}
 	patch := []byte("diff --git a/x b/x\n+one\n")
-	if _, ok := c.get("/bin/hunk", "/repo", patch, 80, diffSingle); ok {
+	if _, ok := c.get(tool, patchID(patch), 80, diffSingle); ok {
 		t.Fatal("empty cache hit")
 	}
-	c.put("/bin/hunk", "/repo", patch, 80, diffSingle, "rendered")
-	if got, ok := c.get("/bin/hunk", "/repo", patch, 80, diffSingle); !ok || got != "rendered" {
+	c.put(tool, patchID(patch), 80, diffSingle, "rendered")
+	if got, ok := c.get(tool, patchID(patch), 80, diffSingle); !ok || got != "rendered" {
 		t.Errorf("get = %q, %v", got, ok)
 	}
 	for name, miss := range map[string]func() (string, bool){
-		"edited patch": func() (string, bool) { return c.get("/bin/hunk", "/repo", append(patch, "+two\n"...), 80, diffSingle) },
-		"other width":  func() (string, bool) { return c.get("/bin/hunk", "/repo", patch, 100, diffSingle) },
-		"other mode":   func() (string, bool) { return c.get("/bin/hunk", "/repo", patch, 80, diffSBS) },
+		"edited patch": func() (string, bool) { return c.get(tool, patchID(append(patch, "+two\n"...)), 80, diffSingle) },
+		"other width":  func() (string, bool) { return c.get(tool, patchID(patch), 100, diffSingle) },
+		"other mode":   func() (string, bool) { return c.get(tool, patchID(patch), 80, diffSBS) },
 	} {
 		if _, ok := miss(); ok {
 			t.Errorf("%s: want a miss", name)
 		}
 	}
 	var none *diskCache
-	none.put("/bin/hunk", "/repo", patch, 80, diffSingle, "x") // a nil cache stores nothing and never panics
-	if _, ok := none.get("/bin/hunk", "/repo", patch, 80, diffSingle); ok {
+	none.put(tool, patchID(patch), 80, diffSingle, "x") // a nil cache stores nothing and never panics
+	if _, ok := none.get(tool, patchID(patch), 80, diffSingle); ok {
 		t.Error("nil cache hit")
 	}
 }
@@ -182,7 +183,7 @@ func TestRenderDiffIgnoringWhitespace(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		msg := renderPreviewCmd(context.Background(), dir, ch.mergeBase, keep, "k", 80, diffSingle, ignoreWS, "")()
+		msg := renderPreviewCmd(context.Background(), dir, ch.mergeBase, keep, "k", 80, diffSingle, diffTool{name: toolDelta, ignoreWS: ignoreWS})()
 		return stripANSI(msg.(previewMsg).content)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "keep.txt"), []byte("one\n\ttwo\nthree\n"), 0o644); err != nil {

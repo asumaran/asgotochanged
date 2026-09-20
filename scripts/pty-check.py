@@ -5,10 +5,13 @@ Spawns the binary on a pty, answers the terminal queries bubbletea sends,
 replays keystrokes and asserts on frames rendered with pyte. Everything runs
 in a throwaway sandbox: a fake HOME, a real git checkout with a local `main`
 as the base and a feature branch (modified, added, deleted, pending and
-untracked files), hunk turned off (ASGOTOCHANGED_HUNK=none: git's own diff, so
-the frames do not depend on hunk's looks) and a stub instead of the editor
-(ASGOTOCHANGED_OPENER) that logs the path and appends a line to the file. It
-never touches a real repository and never opens an editor.
+untracked files), the renderers turned off (ASGOTOCHANGED_HUNK=none and
+ASGOTOCHANGED_DELTA=none: git's own diff, so the frames do not depend on their
+looks) and a stub instead of the editor
+(ASGOTOCHANGED_OPENER) that logs the path and appends a line to the file, and
+another instead of the clipboard command (ASGOTOCHANGED_CLIPBOARD) that logs
+what it was fed. It never touches a real repository, never opens an editor and
+never writes to the real clipboard.
 
 Usage: scripts/pty-check.py ./asgotochanged   (needs python3 + pyte)
 """
@@ -111,7 +114,7 @@ def done():
     print("\n%d failure(s)" % len(failures))
     sys.exit(1 if failures else 0)
 
-CTRL_A, CTRL_S, CTRL_T, ESC, ENTER, TAB, DOWN, UP = b"\x01", b"\x13", b"\x14", b"\x1b", b"\r", b"\t", b"\x1b[B", b"\x1b[A"
+CTRL_A, CTRL_S, CTRL_T, CTRL_Y, ESC, ENTER, TAB, DOWN, UP = b"\x01", b"\x13", b"\x14", b"\x19", b"\x1b", b"\r", b"\t", b"\x1b[B", b"\x1b[A"
 
 # ---------- sandbox: git checkout, editor stub ----------
 repo = os.path.join(home, "wt", "shop", "fix-cart-total")
@@ -133,18 +136,24 @@ write(os.path.join(repo, "notes", "PLAN.md"), "# plan\n")
 edit_log = os.path.join(SANDBOX, "edit.log")
 editor = write(os.path.join(SANDBOX, "editor"),
                '#!/bin/sh\nprintf "%%s\\n" "$1" >> "%s"\nprintf "// edited\\n" >> "$1"\n' % edit_log, 0o755)
+clip_log = os.path.join(SANDBOX, "clip.log")
+clipboard = write(os.path.join(SANDBOX, "clipboard"), '#!/bin/sh\ncat > "%s"\n' % clip_log, 0o755)
 
 def session(args=()):
-    env = dict(git_env, TERM="xterm-256color", COLORTERM="truecolor", ASGOTOCHANGED_HUNK="none",
-               ASGOTOCHANGED_OPENER=editor, XDG_CONFIG_HOME=os.path.join(home, ".config"),
+    env = dict(git_env, TERM="xterm-256color", COLORTERM="truecolor", ASGOTOCHANGED_HUNK="none", ASGOTOCHANGED_DELTA="none",
+               ASGOTOCHANGED_OPENER=editor, ASGOTOCHANGED_CLIPBOARD=clipboard, XDG_CONFIG_HOME=os.path.join(home, ".config"),
                XDG_CACHE_HOME=os.path.join(home, ".cache"))
     for k in ("HERDR_PLUGIN_STATE_DIR", "XDG_STATE_HOME", "HERDR_PLUGIN_ENTRYPOINT_ID", "HERDR_PLUGIN_CONTEXT_JSON"):
         env.pop(k, None)
-    if os.path.exists(edit_log): os.remove(edit_log)
+    for log in (edit_log, clip_log):
+        if os.path.exists(log): os.remove(log)
     return Session(env, args=args, cwd=os.path.join(repo, "src"))   # a subdirectory: paths stay relative to the top
 
 def edited():
     return open(edit_log).read().splitlines() if os.path.exists(edit_log) else []
+
+def copied():
+    return open(clip_log).read() if os.path.exists(clip_log) else None
 
 # One frame (see frame.go): border, context, counter edge, input, main edge,
 # list | preview, bottom edge, help, border.
@@ -194,6 +203,8 @@ f = s.send(ENTER, 0.6)
 check(s.proc.poll() is None and "nothing to edit" in f[-2] and len(edited()) == 1, "a deleted file is not handed to the editor: %r" % f[-2])
 f = s.send(CTRL_T, 0.6)
 check("diff: side-by-side" in f[-2], "ctrl+t cycles the diff mode and says so: %r" % f[-2])
+f = s.send(b"\x12", 0.6)   # ctrl+r: the other renderer; here both are turned off
+check("hunk not found" in f[-2], "ctrl+r says there is no other renderer to switch to: %r" % f[-2])
 os.write(s.master, ESC); s.pump(0.4)
 check(s.finish() == 0, "esc quits")
 
@@ -204,6 +215,9 @@ check(prompt(f) == "asgotochanged ❯ tax" and left(f) == ["▌A  src/tax.ts"], 
 for _ in range(3): s.send(b"\x7f", 0.1)
 f = s.send(b"\x1b[<0;5;8M\x1b[<0;5;8m", 0.6)   # SGR press+release on the third list line
 check(left(f)[2].startswith("▌A  src/tax.ts") and edited() == [], "a click selects the row and opens nothing: %r" % left(f))
+f = s.send(CTRL_Y, 0.6); dump("copied", f)
+check(copied() == "src/tax.ts", "ctrl+y feeds the path under the cursor to the clipboard command: %r" % copied())
+check("copied src/tax.ts" in f[-2] and prompt(f) == "asgotochanged ❯ Search by path…", "and says so on the help line, leaving the filter alone: %r" % f[-2])
 os.write(s.master, b"q"); s.pump(0.4)
 check(s.finish() == 0, "q quits with an empty filter")
 

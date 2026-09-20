@@ -17,16 +17,6 @@ import (
 	"strings"
 )
 
-func runGit(ctx context.Context, args ...string) (string, error) {
-	out, err := exec.CommandContext(ctx, "git", args...).Output()
-	return strings.TrimRight(string(out), "\n"), err
-}
-
-func insideWorkTree() bool {
-	out, err := runGit(context.Background(), "rev-parse", "--is-inside-work-tree")
-	return err == nil && out == "true"
-}
-
 // repoInfo is the context line: which checkout and branch the list is about.
 type repoInfo struct {
 	Top      string

@@ -78,8 +78,9 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
   diff modes differ on purpose.
 - `preview.go` — the diff as a `tea.Cmd`: cancellable, a partial frame then
   the final one, diff modes.
-- `cache.go` — the finished renders on disk between runs, addressed by the
-  patch they were made from (scheme copied from asgitlog).
+- `rendercache.go`: the rendered diffs kept on disk between runs, and
+  `difftool.go`: the renderers (`diffTool`, `toolBin`, `pickTool`,
+  `renderPatch`). Both are the same files asgitlog ships.
 - `split.go` — the divider between the list and the preview: `loadSplit`,
   `saveSplit`, `stepSplit`, `splitWidths`. The file is copied, not imported:
   the same one ships in asgotosession, asgotonotes, asgotopr and asgotoissues (all under
@@ -168,10 +169,12 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   <top>`, so paths are relative to the top whatever the subdirectory.
 - **Diff**: `git diff --no-color <merge-base> -- <path>` (untracked: `git diff
   --no-index -- /dev/null <path>`, whose exit status 1 means "there are
-  differences", not an error) rendered by hunk in `split` or `unified` mode.
-  Without hunk (`ASGOTOCHANGED_HUNK=none`, or not installed) the same diff with
-  `--color=always`. delta is deliberately not used: the family renders diffs
-  with hunk.
+  differences", not an error) rendered by hunk (`split` or `unified`) or by delta, whichever `ctrl+r` left
+  chosen (`renderer` in the state dir, hunk by default; `pickTool` falls back
+  to delta when hunk is missing). With neither (`ASGOTOCHANGED_HUNK=none` and
+  `ASGOTOCHANGED_DELTA=none`, or not installed) the same diff with
+  `--color=always`. The renderer model (`diffTool`, `toolBin`, `pickTool`,
+  `renderPatch`) is `difftool.go`, the same file asgitlog ships.
 - **Renders are two-stage, and that repaint is kept off the screen**: hunk
   paints the diff first and the syntax highlighting a few hundred
   milliseconds later, so a render reports a `partial` frame (shown, never
@@ -183,10 +186,11 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   (`m.inflight`, key → cancel); it runs again every time a render reports
   back, so the window fills a few at a time and moving through the list shows
   finished diffs. The selection never waits for a slot: `cancelFarthest` gives
-  up a render ahead for it. **Disk cache** (`cache.go`,
+  up a render ahead for it. **Disk cache** (`rendercache.go`, shared with asgitlog;
   `~/.cache/asgotochanged/renders`, `ASGOTOCHANGED_NO_CACHE` turns it off): a
-  finished render is stored gzipped under the sha256 of hunk's fingerprint
-  (binary + config files), width, mode and THE PATCH ITSELF, so an edited file
+  finished render is stored gzipped under the sha256 of the renderer's
+  fingerprint (binary + configuration), width, mode and an id that here is a
+  hash of THE PATCH ITSELF (`patchID`; asgitlog uses the commit), so an edited file
   simply misses and nothing can go stale; a hit returns the highlighted frame
   at once with no partial before it. Only the first ever render of a patch
   shows the repaint. In memory the key is status, path, width, effective mode
@@ -200,6 +204,11 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   the main section's bottom edge carries `[-w]` before the scroll position
   (`diffEdge`): that edge is the one about the diff; the top one is about the
   list, which `-w` does not change.
+- **Copy**: `ctrl+y` copies the path of the file under the cursor, relative to
+  the top as the list shows it (`copyCmd` in the shared `clipboard.go`), and
+  the help line confirms it for a moment (`flash.go`); it is in the expanded
+  help only, the folded line has no room left. `ASGOTOCHANGED_CLIPBOARD`
+  replaces the clipboard command (the tests point it at a stub).
 - **Diff mode**: auto / side by side / single column on `ctrl+t`, saved in the
   plugin state dir (`HERDR_PLUGIN_STATE_DIR`, standalone
   `~/.local/state/herdr/plugins/asumaran.asgotochanged`). Auto goes side by side from 120 columns
@@ -246,7 +255,8 @@ For end-to-end verification without a TTY, `scripts/pty-check.py
 ./asgotochanged` (python3 + `pyte`) spawns the binary on a pty, answers the
 terminal queries, replays keystrokes and asserts on pyte-rendered frames, in a
 throwaway sandbox (fake `HOME`, a real git checkout, hunk off, a stub as
-`ASGOTOCHANGED_OPENER` that logs the path and appends a line to the file). The
+`ASGOTOCHANGED_OPENER` that logs the path and appends a line to the file, another
+as `ASGOTOCHANGED_CLIPBOARD` that logs what it was fed). The
 v2 renderer repaints with scroll regions, which pyte ignores, so the driver
 forces a full redraw (pty resize + SIGWINCH) before reading a frame.
 

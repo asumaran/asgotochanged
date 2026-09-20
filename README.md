@@ -7,7 +7,7 @@ what is still pending: committed, staged, unstaged and untracked files. It
 also runs as a plain command in any git checkout.
 
 Sibling of [asgitlog](https://github.com/asumaran/asgitlog) (same frame, same
-[hunk](https://hunk.dev) diffs) and of the asgoto pickers
+diffs, by [hunk](https://hunk.dev) or [delta](https://github.com/dandavison/delta)) and of the asgoto pickers
 ([asgotopr](https://github.com/asumaran/asgotopr),
 [asgotonotes](https://github.com/asumaran/asgotonotes),
 [asgotosession](https://github.com/asumaran/asgotosession)).
@@ -30,8 +30,9 @@ Sibling of [asgitlog](https://github.com/asumaran/asgitlog) (same frame, same
 
 ## Requirements
 
-git and macOS or Linux; herdr >= 0.7.5 for the popup. [hunk](https://hunk.dev) renders
-the diffs (`brew install hunk`); without it the diffs are git's own, in color.
+git and macOS or Linux; herdr >= 0.7.5 for the popup. [hunk](https://hunk.dev) or
+[delta](https://github.com/dandavison/delta) render the diffs (`brew install hunk git-delta`); with neither
+the diffs are git's own, in color.
 Enter opens `nvim`, or `$EDITOR` when there is no nvim.
 
 ## Install
@@ -77,7 +78,9 @@ branch is compared against.
 | --- | --- |
 | `enter` | open the file in the editor; quitting the editor comes back to the list |
 | `ctrl+t` | diff mode: auto, side by side, single column (remembered) |
+| `ctrl+r` | render the diffs with hunk or with delta, as in asgitlog (remembered; hunk by default, delta when hunk is not installed) |
 | `ctrl+s` | show or ignore whitespace changes, like GitHub's "Hide whitespace" (`git diff -w`, remembered); `[-w]` on the diff's bottom edge while it is on |
+| `ctrl+y` | copy the path of the file under the cursor, relative to the repository root as the list shows it; the help line confirms it for a moment |
 | `↑/↓`, `ctrl+p`/`ctrl+n` | move the cursor |
 | PgDn/PgUp | move the cursor a page |
 | `alt+↑`/`alt+↓`, Home/End | top or bottom of the list |
@@ -125,9 +128,12 @@ scripts/pty-check.py ./asgotochanged   # end-to-end TUI check on a pty (python3 
 herdr plugin link "$PWD"   # register the working copy (no build step)
 ```
 
-`ASGOTOCHANGED_OPENER` replaces the editor command and `ASGOTOCHANGED_HUNK` the
-hunk binary (`none` turns hunk off). `ASGOTOCHANGED_POPUP_WIDTH` /
-`ASGOTOCHANGED_POPUP_HEIGHT` override the popup size from the manifest.
+`ASGOTOCHANGED_OPENER` replaces the editor command; `ASGOTOCHANGED_HUNK` and
+`ASGOTOCHANGED_DELTA` replace the renderers' binaries (`none` turns one off). `ASGOTOCHANGED_CLIPBOARD` replaces the
+clipboard command `ctrl+y` feeds the path to (`pbcopy` on macOS, else the first
+of `wl-copy`, `xclip` and `xsel`); the tests point it at a stub.
+`ASGOTOCHANGED_POPUP_WIDTH` / `ASGOTOCHANGED_POPUP_HEIGHT` override the popup
+size from the manifest.
 
 ## Releasing
 

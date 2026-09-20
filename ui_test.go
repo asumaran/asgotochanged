@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -31,6 +33,7 @@ var (
 	keyDown  = tea.KeyPressMsg{Code: tea.KeyDown}
 	keyCtrlT = tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
 	keyCtrlS = tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
+	keyCtrlY = tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl}
 
 	keyShiftLeft  = tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModShift}
 	keyShiftRight = tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModShift}
@@ -190,7 +193,7 @@ func TestPrefetchIsBounded(t *testing.T) {
 	// The nearest rows go first: the one below, then (none above row 0) the next.
 	for _, i := range []int{1, 2} {
 		f := m.rows[i].f
-		if _, ok := m.inflight[previewKey(m.repo.Top, f, m.prevW(), fileDiff(m.diffMode, m.prevW(), f), m.ignoreWS)]; !ok {
+		if _, ok := m.inflight[previewKey(m.repo.Top, f, m.prevW(), fileDiff(m.diffMode, m.prevW(), f), m.tool())]; !ok {
 			t.Errorf("row %d is not being rendered ahead", i)
 		}
 	}
@@ -331,5 +334,97 @@ func TestMouseWheelFollowsThePointer(t *testing.T) {
 	wheel(m.listW()+10, tea.MouseWheelDown)
 	if m.cursor != first || m.prevVP.YOffset() == 0 {
 		t.Errorf("wheel over the preview: cursor = %d, preview at %d", m.cursor, m.prevVP.YOffset())
+	}
+}
+
+// TestCopyKeyCopiesThePath covers ctrl+y: the path of the file under the
+// cursor goes to the clipboard as the list shows it, the help line confirms it
+// for a moment, and the filter is left alone.
+func TestCopyKeyCopiesThePath(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "clip")
+	stub := filepath.Join(t.TempDir(), "clipboard")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\ncat > "+log+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ASGOTOCHANGED_CLIPBOARD", stub)
+	next, _ := fixture(t).Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	m := press(next.(model), keyDown)
+	res, cmd := m.Update(keyCtrlY)
+	if cmd == nil {
+		t.Fatal("ctrl+y returned no command")
+	}
+	res, _ = res.(model).Update(cmd())
+	m = res.(model)
+	want := m.current().path
+	if got, _ := os.ReadFile(log); string(got) != want {
+		t.Errorf("the clipboard got %q, want %q, the path under the cursor", got, want)
+	}
+	plain := strings.Split(ansi.Strip(m.render()), "\n")
+	if help := plain[len(plain)-2]; !strings.Contains(help, "copied "+want) {
+		t.Errorf("help line = %q, want the confirmation", help)
+	}
+	if m.ti.Value() != "" {
+		t.Errorf("ctrl+y leaked into the filter: %q", m.ti.Value())
+	}
+	res, _ = m.Update(clearFlashMsg(m.flash.seq))
+	plain = strings.Split(ansi.Strip(res.(model).render()), "\n")
+	if help := plain[len(plain)-2]; !strings.Contains(help, "type filter") {
+		t.Errorf("after the timer the help is back: %q", help)
+	}
+}
+
+// TestCopyKeyWithNothingUnderTheCursor: an empty list has no path to copy and
+// the clipboard command is never run.
+func TestCopyKeyWithNothingUnderTheCursor(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "clip")
+	stub := filepath.Join(t.TempDir(), "clipboard")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\ncat > "+log+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ASGOTOCHANGED_CLIPBOARD", stub)
+	next, _ := fixture(t).Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	m := press(next.(model), typed("zzzz")...)
+	res, cmd := m.Update(keyCtrlY)
+	if cmd == nil {
+		t.Fatal("ctrl+y returned no command")
+	}
+	res, _ = res.(model).Update(cmd())
+	plain := strings.Split(ansi.Strip(res.(model).render()), "\n")
+	if help := plain[len(plain)-2]; !strings.Contains(help, "nothing to copy") {
+		t.Errorf("help line = %q, want %q", help, "nothing to copy")
+	}
+	if _, err := os.Stat(log); err == nil {
+		t.Error("the clipboard command ran with nothing to copy")
+	}
+}
+
+// TestRendererToggle covers ctrl+r: hunk and delta take turns, the choice is
+// remembered, and a render made by one is not shown for the other.
+func TestRendererToggle(t *testing.T) {
+	m := hunkFixture(t)
+	m.deltaBin = "/nonexistent/delta"
+	if tool := m.tool(); tool.name != toolHunk || tool.bin != m.hunkBin {
+		t.Fatalf("hunk is the default renderer: %+v", tool)
+	}
+	before := m.prevKey
+	m = press(m, tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	if tool := m.tool(); tool.name != toolDelta || tool.bin != m.deltaBin {
+		t.Errorf("ctrl+r moves to delta: %+v", tool)
+	}
+	if m.flash.text != "diffs by delta" || loadRenderer() != toolDelta {
+		t.Errorf("flash = %q, remembered = %q", m.flash.text, loadRenderer())
+	}
+	if m.prevKey == before || !strings.Contains(m.prevKey, "|delta|") {
+		t.Errorf("the preview key must name the renderer: %q then %q", before, m.prevKey)
+	}
+	m = press(m, tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	if m.tool().name != toolHunk || loadRenderer() != toolHunk {
+		t.Errorf("ctrl+r again is back on hunk: %+v", m.tool())
+	}
+
+	m.hunkBin = ""
+	m = press(m, tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	if m.flash.text != "hunk not found" || m.tool().name != toolDelta {
+		t.Errorf("without hunk there is nothing to switch to: flash %q, tool %+v", m.flash.text, m.tool())
 	}
 }

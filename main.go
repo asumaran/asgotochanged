@@ -10,7 +10,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -65,11 +64,12 @@ func main() {
 	if err != nil {
 		loadErr = err.Error()
 	}
-	renderCache = openDiskCache()
+	renderCache = openDiskCache("asgotochanged")
 	go renderCache.prune(cacheMaxBytes)
 
 	// Alt screen and mouse mode are declared per frame by View().
-	m := newModel(repo, ch, loadErr, loadDiffMode(), hunkPath(), *query)
+	m := newModel(repo, ch, loadErr, loadDiffMode(), toolBin("asgotochanged", "hunk"), *query)
+	m.deltaBin, m.toolPref = toolBin("asgotochanged", "delta"), loadRenderer()
 	if _, err := tea.NewProgram(m).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -92,29 +92,6 @@ func cwd() string {
 	return homeRel(dir)
 }
 
-// enterPaneCwd moves to the directory of the pane that was focused when the
-// popup opened. herdr starts plugin panes in the plugin's own directory (the
-// manifest's "./asgotochanged" is resolved against it, so the pane cannot simply
-// be opened with another cwd) and describes the invocation, focused pane
-// included, in HERDR_PLUGIN_CONTEXT_JSON.
-func enterPaneCwd() {
-	if os.Getenv("HERDR_PLUGIN_ENTRYPOINT_ID") == "" {
-		return
-	}
-	var ctx struct {
-		FocusedPaneCwd string `json:"focused_pane_cwd"`
-		WorkspaceCwd   string `json:"workspace_cwd"`
-	}
-	if json.Unmarshal([]byte(os.Getenv("HERDR_PLUGIN_CONTEXT_JSON")), &ctx) != nil {
-		return
-	}
-	for _, dir := range []string{ctx.FocusedPaneCwd, ctx.WorkspaceCwd} {
-		if dir != "" && os.Chdir(dir) == nil {
-			return
-		}
-	}
-}
-
 // ---- preferences ----
 
 func loadDiffMode() string {
@@ -128,6 +105,21 @@ func loadDiffMode() string {
 func saveDiffMode(mode string) {
 	_ = os.MkdirAll(stateDir(), 0o755)
 	_ = os.WriteFile(filepath.Join(stateDir(), "diff"), []byte(mode+"\n"), 0o644)
+}
+
+// loadRenderer is the renderer ctrl+r left chosen. hunk is what this tool
+// drew its diffs with before it had a choice, so it stays the default.
+func loadRenderer() string {
+	data, _ := os.ReadFile(filepath.Join(stateDir(), "renderer"))
+	if strings.TrimSpace(string(data)) == toolDelta {
+		return toolDelta
+	}
+	return toolHunk
+}
+
+func saveRenderer(tool string) {
+	_ = os.MkdirAll(stateDir(), 0o755)
+	_ = os.WriteFile(filepath.Join(stateDir(), "renderer"), []byte(tool+"\n"), 0o644)
 }
 
 func loadIgnoreWS() bool {

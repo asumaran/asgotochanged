@@ -13,9 +13,7 @@ package main
 // edited file re-renders on its own.
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,27 +24,8 @@ import (
 )
 
 const (
-	diffAuto   = "auto" // side by side when the preview is wide enough
-	diffSBS    = "sbs"
-	diffSingle = "single"
-
-	// autoSBSMinW is the preview width from which the auto mode goes side by
-	// side (the threshold asgitlog uses).
-	autoSBSMinW = 120
-
 	maxDiffBytes = 2 << 20
 )
-
-// effectiveDiff resolves auto by the preview width.
-func effectiveDiff(mode string, width int) string {
-	if mode != diffAuto {
-		return mode
-	}
-	if width >= autoSBSMinW {
-		return diffSBS
-	}
-	return diffSingle
-}
 
 // fileDiff is the effective mode for one file. In auto, a file that was only
 // added or only deleted goes single column whatever the width: side by side
@@ -58,17 +37,6 @@ func fileDiff(mode string, width int, f changedFile) string {
 	return effectiveDiff(mode, width)
 }
 
-func diffLabel(mode string, width int) string {
-	label := "side-by-side"
-	if effectiveDiff(mode, width) == diffSingle {
-		label = "single column"
-	}
-	if mode == diffAuto {
-		return "auto: " + label
-	}
-	return label
-}
-
 func nextDiffMode(mode string) string {
 	switch mode {
 	case diffAuto:
@@ -77,22 +45,6 @@ func nextDiffMode(mode string) string {
 		return diffSingle
 	}
 	return diffAuto
-}
-
-// hunkPath resolves hunk. ASGOTOCHANGED_HUNK replaces it, and "none" turns it
-// off (the pty driver does, so its frames do not depend on hunk's looks).
-func hunkPath() string {
-	switch b := os.Getenv("ASGOTOCHANGED_HUNK"); b {
-	case "":
-	case "none":
-		return ""
-	default:
-		return b
-	}
-	if p, err := exec.LookPath("hunk"); err == nil {
-		return p
-	}
-	return ""
 }
 
 type previewMsg struct {
@@ -111,18 +63,18 @@ type previewMsg struct {
 // previewKey identifies a render. mode is the effective diff mode, so auto
 // and an explicit mode share their renders; the mtime makes a render of an
 // edited file unreachable.
-func previewKey(top string, f changedFile, width int, mode string, ignoreWS bool) string {
+func previewKey(top string, f changedFile, width int, mode string, tool diffTool) string {
 	var mtime int64
 	if st, err := os.Stat(filepath.Join(top, f.path)); err == nil {
 		mtime = st.ModTime().UnixNano()
 	}
-	if ignoreWS {
+	if tool.ignoreWS {
 		mode += "-w"
 	}
-	return f.status + "|" + f.path + "|" + strconv.Itoa(width) + "|" + mode + "|" + strconv.FormatInt(mtime, 10)
+	return f.status + "|" + f.path + "|" + strconv.Itoa(width) + "|" + tool.name + "|" + mode + "|" + strconv.FormatInt(mtime, 10)
 }
 
-func renderPreviewCmd(ctx context.Context, top, mergeBase string, f changedFile, key string, width int, mode string, ignoreWS bool, hunkBin string) tea.Cmd {
+func renderPreviewCmd(ctx context.Context, top, mergeBase string, f changedFile, key string, width int, mode string, tool diffTool) tea.Cmd {
 	// At most a partial and a final message: the render never blocks on a
 	// program that went away.
 	msgs := make(chan previewMsg, 2)
@@ -130,14 +82,14 @@ func renderPreviewCmd(ctx context.Context, top, mergeBase string, f changedFile,
 	rendered := func(body string, partial bool) previewMsg {
 		if strings.TrimSpace(body) == "" {
 			body = stDim.Render("(no textual changes)")
-			if ignoreWS {
+			if tool.ignoreWS {
 				body = stDim.Render("(only whitespace changes)")
 			}
 		}
 		return previewMsg{key: key, content: body, partial: partial}
 	}
 	run := func() previewMsg {
-		body, err := renderDiff(ctx, top, mergeBase, f, width, mode == diffSBS, ignoreWS, hunkBin, func(body string) {
+		body, err := renderDiff(ctx, top, mergeBase, f, width, mode == diffSBS, tool, func(body string) {
 			msg := rendered(body, true)
 			msg.next = next
 			msgs <- msg
@@ -156,10 +108,10 @@ func renderPreviewCmd(ctx context.Context, top, mergeBase string, f changedFile,
 	}
 }
 
-// renderDiff renders the file's patch with hunk, or returns git's colored
-// diff when there is no hunk. early gets hunk's first frame.
-func renderDiff(ctx context.Context, top, mergeBase string, f changedFile, width int, sbs, ignoreWS bool, hunkBin string, early func(string)) (string, error) {
-	git := exec.CommandContext(ctx, "git", diffArgs(top, mergeBase, f, hunkBin == "", ignoreWS)...)
+// renderDiff draws the file's patch with tool (see renderPatch); early gets
+// hunk's first frame.
+func renderDiff(ctx context.Context, top, mergeBase string, f changedFile, width int, sbs bool, tool diffTool, early func(string)) (string, error) {
+	git := exec.CommandContext(ctx, "git", diffArgs(top, mergeBase, f, tool.plain(), tool.ignoreWS)...)
 	// `git diff --no-index` exits 1 for "there are differences".
 	out, err := limitedOutput(git, f.status == "?")
 	if err != nil {
@@ -167,67 +119,26 @@ func renderDiff(ctx context.Context, top, mergeBase string, f changedFile, width
 	}
 	// With -w a file that only changed in whitespace has no hunks left; some
 	// git versions still print its header, which is nothing to show.
-	if ignoreWS && !strings.Contains(out, "@@ -") && !strings.Contains(out, "Binary files") {
+	if tool.ignoreWS && !strings.Contains(out, "@@ -") && !strings.Contains(out, "Binary files") {
 		return "", nil
 	}
-	if hunkBin == "" {
-		return strings.ReplaceAll(out, "\t", "    "), nil
+	patch := []byte(out + "\n")
+	if tool.plain() { // as fast as reading it back
+		return renderPatch(ctx, tool, patch, width, sbs, early)
 	}
-	// The render is addressed by the patch itself (see cache.go): a hit is the
-	// finished, highlighted frame at once, with no partial frame before it.
-	patch, mode := []byte(out+"\n"), diffSingle
+	// The render is addressed by the patch itself (see rendercache.go): a hit
+	// is the finished, highlighted frame at once, with no partial frame before
+	// it, and an edited file simply misses.
+	id, mode := patchID(patch), diffSingle
 	if sbs {
 		mode = diffSBS
 	}
-	if diff, ok := renderCache.get(hunkBin, top, patch, width, mode); ok {
+	if diff, ok := renderCache.get(tool, id, width, mode); ok {
 		return diff, nil
 	}
-	diff, err := renderHunk(ctx, hunkBin, patch, width, sbs, early)
+	diff, err := renderPatch(ctx, tool, patch, width, sbs, early)
 	if err == nil && ctx.Err() == nil {
-		renderCache.put(hunkBin, top, patch, width, mode, diff)
+		renderCache.put(tool, id, width, mode, diff)
 	}
 	return diff, err
 }
-
-// limitedOutput runs cmd and returns at most maxDiffBytes of its stdout, cut
-// at a line boundary with a note when the cap was hit. diffExit tolerates
-// exit status 1, which `git diff --no-index` uses for "there are differences".
-func limitedOutput(cmd *exec.Cmd, diffExit bool) (string, error) {
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return "", err
-	}
-	if err := cmd.Start(); err != nil {
-		return "", err
-	}
-	data, _ := io.ReadAll(io.LimitReader(stdout, maxDiffBytes+1))
-	capped := len(data) > maxDiffBytes
-	if capped {
-		_ = cmd.Process.Kill()
-		data = data[:maxDiffBytes]
-		if i := bytes.LastIndexByte(data, '\n'); i >= 0 {
-			data = data[:i]
-		}
-	}
-	err = cmd.Wait()
-	out := strings.Trim(string(data), "\n")
-	if capped {
-		return out + "\n\n" + stDim.Render("(diff truncated at "+strconv.Itoa(maxDiffBytes>>20)+" MiB)"), nil
-	}
-	if ee, ok := err.(*exec.ExitError); ok && diffExit && ee.ExitCode() == 1 {
-		return out, nil
-	}
-	if err != nil && out == "" {
-		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return "", &renderError{strings.SplitN(msg, "\n", 2)[0]}
-		}
-		return "", err
-	}
-	return out, nil
-}
-
-type renderError struct{ msg string }
-
-func (e *renderError) Error() string { return e.msg }

@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -34,7 +33,6 @@ var (
 	stInfo  = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 	stScope = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 	stCount = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	stFlash = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
 	// statuses, after git's own palette
 	stAdded     = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
@@ -65,6 +63,8 @@ type keyMap struct {
 	Edit     key.Binding
 	DiffMode key.Binding
 	Space    key.Binding
+	Tool     key.Binding
+	Copy     key.Binding
 	Quit     key.Binding
 	PrevUp   key.Binding
 	PrevDown key.Binding
@@ -88,7 +88,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Filter, k.PrevUp, k.Shrink},
 		{k.Nav.Up, k.Nav.PageUp, k.Nav.Top},
-		{k.Edit, k.DiffMode, k.Space},
+		{k.Edit, k.DiffMode, k.Tool, k.Space, k.Copy},
 		{k.Help, k.Quit},
 	}
 }
@@ -99,6 +99,8 @@ func defaultKeys() keyMap {
 		Edit:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "edit")),
 		DiffMode: key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("^t", "diff mode")),
 		Space:    key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("^s", "whitespace")),
+		Tool:     key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("^r", "diffs by delta / hunk")),
+		Copy:     key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("^y", "copy the path")),
 		Quit:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc/q", "quit")),
 		PrevUp:   key.NewBinding(key.WithKeys("shift+up"), key.WithHelp("⇧↑/⇧↓", "scroll the diff")),
 		PrevDown: key.NewBinding(key.WithKeys("shift+down")),
@@ -122,14 +124,14 @@ type reloadedMsg struct {
 	err error
 }
 
-type clearFlashMsg int
-
 type model struct {
 	// data
 	repo     repoInfo
 	ch       changes
 	loadErr  string
+	deltaBin string // the renderers found at startup (difftool.go); either may be ""
 	hunkBin  string
+	toolPref string // the renderer ctrl+r chose, remembered between runs
 	diffMode string // auto | sbs | single
 	ignoreWS bool   // git's -w: changes in whitespace are left out of the diffs
 
@@ -138,8 +140,7 @@ type model struct {
 
 	// ui
 	notice string // error on the help line, cleared by the next key
-	flash  string // confirmation on the help line, cleared by a timer
-	flashN int
+	flash  flash  // confirmation on the help line, cleared by a timer (flash.go)
 	ti     textinput.Model
 	listVP viewport.Model
 	prevVP viewport.Model
@@ -163,6 +164,7 @@ func newModel(repo repoInfo, ch changes, loadErr, diffMode, hunkBin, query strin
 		ch:       ch,
 		loadErr:  loadErr,
 		hunkBin:  hunkBin,
+		toolPref: toolHunk, // main() replaces it with the remembered one
 		diffMode: diffMode,
 		ignoreWS: loadIgnoreWS(),
 		split:    loadSplit(stateDir()),
@@ -222,6 +224,17 @@ const minBodyH = 4
 
 func (m *model) toggleHelp() tea.Cmd {
 	m.help.ShowAll = !m.help.ShowAll
+	m.resize()
+	m.renderList()
+	return m.updatePreview()
+}
+
+// reflow lays the sections out again after the help line changed height: a
+// flash folds an expanded help for as long as it shows.
+func (m *model) reflow() tea.Cmd {
+	if !m.help.ShowAll {
+		return nil
+	}
 	m.resize()
 	m.renderList()
 	return m.updatePreview()
@@ -350,7 +363,7 @@ func (m *model) updatePreview() tea.Cmd {
 		return nil
 	}
 	mode := fileDiff(m.diffMode, m.prevW(), *f)
-	key := previewKey(m.repo.Top, *f, m.prevW(), mode, m.ignoreWS)
+	key := previewKey(m.repo.Top, *f, m.prevW(), mode, m.tool())
 	if key == m.prevKey {
 		return m.prefetch()
 	}
@@ -370,10 +383,26 @@ func (m *model) updatePreview() tea.Cmd {
 	return m.startRender(*f, key, mode)
 }
 
+// tool is what renders the diffs now: the remembered choice when it is
+// installed.
+func (m *model) tool() diffTool {
+	return pickTool(m.toolPref, m.deltaBin, m.hunkBin, m.ignoreWS)
+}
+
+// toggleTool is ctrl+r: the other renderer, remembered.
+func (m *model) toggleTool() tea.Cmd {
+	if m.hunkBin == "" {
+		return m.setFlash("hunk not found")
+	}
+	m.toolPref = nextTool(m.toolPref)
+	saveRenderer(m.toolPref)
+	return tea.Batch(m.updatePreview(), m.setFlash("diffs by "+m.toolPref))
+}
+
 func (m *model) startRender(f changedFile, key, mode string) tea.Cmd {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.inflight[key] = cancel
-	return renderPreviewCmd(ctx, m.repo.Top, m.ch.mergeBase, f, key, m.prevW(), mode, m.ignoreWS, m.hunkBin)
+	return renderPreviewCmd(ctx, m.repo.Top, m.ch.mergeBase, f, key, m.prevW(), mode, m.tool())
 }
 
 // around is the rows worth having rendered besides the selected one, nearest
@@ -394,7 +423,7 @@ func (m *model) around() []int {
 // free pipelines. It runs again whenever a render reports back, so the window
 // fills up a few at a time.
 func (m *model) prefetch() tea.Cmd {
-	if m.hunkBin == "" {
+	if m.tool().plain() {
 		return nil // plain git is instant: nothing to hide
 	}
 	var cmds []tea.Cmd
@@ -404,7 +433,7 @@ func (m *model) prefetch() tea.Cmd {
 		}
 		f := m.rows[i].f
 		mode := fileDiff(m.diffMode, m.prevW(), f)
-		key := previewKey(m.repo.Top, f, m.prevW(), mode, m.ignoreWS)
+		key := previewKey(m.repo.Top, f, m.prevW(), mode, m.tool())
 		if _, ok := m.renders[key]; ok {
 			continue
 		}
@@ -422,7 +451,7 @@ func (m *model) cancelFarthest() {
 	keep := map[string]int{}
 	for rank, i := range m.around() {
 		f := m.rows[i].f
-		keep[previewKey(m.repo.Top, f, m.prevW(), fileDiff(m.diffMode, m.prevW(), f), m.ignoreWS)] = rank
+		keep[previewKey(m.repo.Top, f, m.prevW(), fileDiff(m.diffMode, m.prevW(), f), m.tool())] = rank
 	}
 	victim, worst := "", -1
 	for key := range m.inflight {
@@ -441,15 +470,7 @@ func (m *model) cancelFarthest() {
 	}
 }
 
-// flashFor is how long a confirmation stays on the help line.
-const flashFor = 1500 * time.Millisecond
-
-func (m *model) setFlash(s string) tea.Cmd {
-	m.flash = s
-	m.flashN++
-	n := m.flashN
-	return tea.Tick(flashFor, func(time.Time) tea.Msg { return clearFlashMsg(n) })
-}
+func (m *model) setFlash(s string) tea.Cmd { return m.flash.set(s) }
 
 // ---- editing ----
 
@@ -547,11 +568,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.prevKey = ""
 		return m, m.updatePreview()
 
+	case flashMsg:
+		return m, tea.Batch(m.setFlash(string(msg)), m.reflow())
+
 	case clearFlashMsg:
-		if int(msg) == m.flashN {
-			m.flash = ""
-		}
-		return m, nil
+		m.flash.clear(msg)
+		return m, m.reflow()
 
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
@@ -602,6 +624,13 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.ignoreWS = !m.ignoreWS
 		saveIgnoreWS(m.ignoreWS)
 		return m, tea.Batch(m.setFlash("whitespace: "+wsLabel(m.ignoreWS)), m.updatePreview())
+	case key.Matches(msg, m.keys.Tool):
+		return m, m.toggleTool()
+	case key.Matches(msg, m.keys.Copy):
+		if f := m.current(); f != nil {
+			return m, copyCmd("asgotochanged", "", f.path)
+		}
+		return m, copyCmd("asgotochanged", "", "")
 	case m.keys.Nav.matches(msg):
 		m.setCursor(m.keys.Nav.move(msg, m.cursor, len(m.rows), m.listVP.Height(), nil))
 		m.renderList()
@@ -712,27 +741,14 @@ func (m model) leftColumn() string {
 	return stDim.Render(truncate(" "+msg, m.listW()))
 }
 
-// diffEdge is what the main section's bottom edge says about the diff: a mark
-// while git's -w is on, and the scroll position.
-func diffEdge(ignoreWS bool, pos string) string {
-	if !ignoreWS {
-		return pos
-	}
-	mark := stScope.Render("[-w]")
-	if pos == "" {
-		return mark
-	}
-	return mark + stDim.Render(" ─ ") + pos
-}
-
 // footer is the key help, or a notice or confirmation while one is showing.
 // footMsg is what takes the help's place while there is something to say.
 func (m model) footMsg() string {
 	switch {
 	case m.notice != "":
 		return stError.Render(truncate(m.notice, max(0, m.width-4)))
-	case m.flash != "":
-		return stFlash.Render(truncate(m.flash, max(0, m.width-4)))
+	case m.flash.text != "":
+		return m.flash.view(m.width - 4)
 	}
 	return ""
 }
