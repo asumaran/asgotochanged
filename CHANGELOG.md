@@ -1,3 +1,7 @@
+## v0.7.0 (2026-09-19)
+
+* feat(ui): move the counter under the list (15d13a5)
+
 ## v0.6.2 (2026-09-19)
 
 * refactor: share the home path helpers (7a94e0b)
