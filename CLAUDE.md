@@ -63,7 +63,9 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
   `overlay`). The same file in every tool of the family.
 - `listnav.go` — `listNav`: the keys that move the cursor through a list and
   where each one takes it, group headers skipped. `scrollTo` keeps the
-  cursor in view, with the header of its group when there is one. The same file in every tool
+  cursor in view, with the header of its group when there is one. `emptyList`
+  is what a list says instead of rows: the error, `No matches`, or the
+  tool's own reason. The same file in every tool
   of the family.
 - `highlight.go` — `highlight`/`highlightFrom`, `matchOver`, `onSel`,
   `selPad` and the `stSel`/`stMatch` styles: how a match and the selected row
@@ -223,6 +225,10 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   the help line confirms it for a moment (`flash.go`); it is listed in the
   panel only, the help line has no room left. `ASGOTOCHANGED_CLIPBOARD`
   replaces the clipboard command (the tests point it at a stub).
+- **Settings**: the diff mode, the renderer and the whitespace are one file
+  each in the state dir (`diff`, `renderer`, `whitespace`; `setting.go`, the
+  same file in every tool of the family that remembers an option), next to
+  the divider's `split-columns`.
 - **Diff mode**: auto / side by side / single column on `ctrl+t`, saved in the
   plugin state dir (`HERDR_PLUGIN_STATE_DIR`, standalone
   `~/.local/state/herdr/plugins/asumaran.asgotochanged`). Auto goes side by side from 120 columns

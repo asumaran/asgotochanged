@@ -114,7 +114,7 @@ def done():
     print("\n%d failure(s)" % len(failures))
     sys.exit(1 if failures else 0)
 
-CTRL_T, CTRL_Y, PANEL, ESC, ENTER, TAB, DOWN, UP = b"\x14", b"\x19", b"\x1bOP", b"\x1b", b"\r", b"\t", b"\x1b[B", b"\x1b[A"
+CTRL_S, CTRL_T, CTRL_Y, PANEL, ESC, ENTER, TAB, DOWN, UP = b"\x13", b"\x14", b"\x19", b"\x1bOP", b"\x1b", b"\r", b"\t", b"\x1b[B", b"\x1b[A"
 
 # ---------- sandbox: git checkout, editor stub ----------
 repo = os.path.join(home, "wt", "shop", "fix-cart-total")
@@ -148,6 +148,10 @@ def session(args=()):
     for log in (edit_log, clip_log):
         if os.path.exists(log): os.remove(log)
     return Session(env, args=args, cwd=os.path.join(repo, "src"))   # a subdirectory: paths stay relative to the top
+
+def setting(name):
+    path = os.path.join(home, ".local", "state", "herdr", "plugins", "asumaran.asgotochanged", name)
+    return open(path).read().strip() if os.path.exists(path) else None
 
 def edited():
     return open(edit_log).read().splitlines() if os.path.exists(edit_log) else []
@@ -203,6 +207,11 @@ f = s.send(ENTER, 0.6)
 check(s.proc.poll() is None and "nothing to edit" in f[-2] and len(edited()) == 1, "a deleted file is not handed to the editor: %r" % f[-2])
 f = s.send(CTRL_T, 0.6)
 check("diff: side-by-side" in f[-2], "ctrl+t cycles the diff mode and says so: %r" % f[-2])
+f = s.send(CTRL_S, 0.6)
+check("whitespace: ignored" in f[-2] and "[-w]" in f[-3] and setting("whitespace") == "ignore",
+      "ctrl+s ignores the whitespace: said on the help line, marked on the diff's edge and remembered: %r" % f[-3][-30:])
+f = s.send(CTRL_S, 0.6)
+check("whitespace: shown" in f[-2] and "[-w]" not in f[-3] and setting("whitespace") == "show", "ctrl+s again shows it: %r" % f[-2])
 s.pump(2.2)   # the flash gives the help line back
 rows = len(f)
 f = s.send(PANEL, 0.6); dump("panel", f)
@@ -225,6 +234,10 @@ check(prompt(f) == "asgotochanged ❯ tax" and left(f) == ["▌A  src/tax.ts"], 
 for _ in range(3): s.send(b"\x7f", 0.1)
 f = s.send(b"\x1b[<0;5;8M\x1b[<0;5;8m", 0.6)   # SGR press+release on the third list line
 check(left(f)[2].startswith("▌A  src/tax.ts") and edited() == [], "a click selects the row and opens nothing: %r" % left(f))
+f = s.send(b"\x1b[<64;5;8M", 0.6)   # the wheel, up, over the list
+check(left(f)[1].startswith("▌") and edited() == [], "the wheel over the list moves the cursor: %r" % left(f))
+f = s.send(b"\x1b[<65;5;8M", 0.6)   # and back down
+check(left(f)[2].startswith("▌A  src/tax.ts"), "and back: %r" % left(f))
 f = s.send(CTRL_Y, 0.6); dump("copied", f)
 check(copied() == "src/tax.ts", "ctrl+y feeds the path under the cursor to the clipboard command: %r" % copied())
 check("copied src/tax.ts" in f[-2] and prompt(f) == "asgotochanged ❯ Search by path…", "and says so on the help line, leaving the filter alone: %r" % f[-2])
