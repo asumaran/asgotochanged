@@ -2,7 +2,7 @@ id = "asumaran.asgotochanged"
 name = "asgotochanged"
 version = "0.10.2"
 min_herdr_version = "0.7.5"
-description = "Browse the files the current branch changed against its base, with a delta-rendered diff, and edit them"
+description = "Browse the files the current branch changed against its base, with a diff rendered by hunk or delta, and edit them"
 platforms = ["linux", "macos"]
 
 [[build]]

@@ -8,7 +8,7 @@ asdemo record            # from the repo root; writes docs/demo.gif
 asdemo doctor            # check the toolchain first
 ```
 
-- `scenario.sh` — the isolated herdr session (`asgotochangeddemo`). No personal
+- `scenario.sh`: the isolated herdr session (`asgotochangeddemo`). No personal
   checkout has a branch worth showing, so `demo_build` clones
   `~/Developer/shopnest` into `~/.cache/asgotochanged-demo/shopnest` and scripts
   a `feat/cart-tax` branch on it: a committed change, an added and a deleted
@@ -17,7 +17,7 @@ asdemo doctor            # check the toolchain first
   `nvim --clean`, so the editor shows without the user's plugins.
   `demo_setup` renders nothing ahead: the first popup shows hunk's highlight
   coming in, unless the disk cache already holds those patches.
-- `keys.json` — `prefix+m` -> popup -> down, down -> type `tax` -> enter (the
+- `keys.json`: `prefix+m` -> popup -> down, down -> type `tax` -> enter (the
   editor) -> `:q` (back to the list) -> `ctrl+t` (diff mode) -> esc.
 
 Known issue: in the recording the popup stays blank while the editor runs.

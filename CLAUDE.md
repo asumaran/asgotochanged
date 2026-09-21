@@ -7,15 +7,16 @@ Guidance for working in this repository.
 `asgotochanged` is a herdr plugin popup that lists the files the current branch
 changed against its base (committed, staged, unstaged and untracked: what a PR
 would ship plus what is pending), previews the diff of the file under the
-cursor rendered by hunk, and opens it in the editor, coming back to the list
-when the editor exits. It is the Go port of `fm`, a zsh + fzf function from the
-user's dotfiles, and the terminal twin of the `aschanged` VS Code extension.
+cursor rendered by hunk (the default) or delta, and opens it in the editor,
+coming back to the list when the editor exits. It started as the Go port of a
+zsh + fzf function and is the terminal twin of the `aschanged` VS Code
+extension.
 Same frame and diff renderer as `asgitlog`, same filtering and lifecycle as the
 asgoto pickers.
 
 It only reads the repository. It never stages, commits, stashes or checks
-anything out; what it writes is its own: the chosen diff mode, the whitespace
-setting and a cache of rendered diffs.
+anything out. What it writes is its own: its settings (the panel's options and
+the list size) and its cache of rendered diffs.
 
 Distributed as a herdr plugin (`herdr plugin install asumaran/asgotochanged`;
 the manifest's `[[build]]` runs `scripts/fetch-binary.sh`). Each GitHub Release
@@ -30,75 +31,129 @@ The charm v2 modules are imported under their canonical `charm.land/<name>/v2`
 paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
 `go get`). Files are split by concern:
 
-- `main.go` — flags (`-version`, `-dump`, `-query`), `enterPaneCwd`, the
-  diff-mode preference, `tea.NewProgram`, `runDump`.
-- `git.go` — `loadRepoInfo` / `repoInfo.line`, `resolveBase`, `loadChanges`
+- `main.go`: flags (`-version`, `-dump`, `-query`), the work tree check
+  (`fatal` outside one), the saved diff settings, `tea.NewProgram`, `runDump`.
+- `git.go`: `loadRepoInfo` / `repoInfo.line`, `resolveBase`, `loadChanges`
   (name-status + untracked + numstat, all NUL-separated), `diffArgs`.
-- `filter.go` — fuzzy rows over the paths.
-- `match.go` — `findTight`, the fuzzy matcher with one correction: it is
-  greedy (first candidate for each rune, left to right), so a query that
+- `filter.go`: fuzzy rows over the paths.
+- `match.go`: `findTight`/`tighten`, the fuzzy matcher with one correction: it
+  is greedy (first candidate for each rune, left to right), so a query that
   occurs in one piece could still match scattered letters before it. When the
   query occurs whole, that occurrence is the match, for the highlight and for
-  the score. The same file in every tool of the family.
-- `text.go` — `truncate`, `padRight`, `padLeft`: fitting text, styled or not,
+  the score. `hasTerms` says whether a query searches for anything: spaces and
+  a bare `~` or `'` do not, so they never filter, rank or move the cursor. The
+  same file in every tool of the family.
+- `text.go`: `truncate`, `padRight`, `padLeft`: fitting text, styled or not,
   into cells. The same file in every tool of the family.
-- `statedir.go` — `stateDirFor`: the state dir herdr injects, or a fixed path
-  under the config home when the tool runs on its own. The same file in every
-  tool of the family that keeps state.
-- `setting.go` — `loadSetting`, `saveSetting`: a setting the tool remembers,
+- `statedir.go`: `stateDirFor`: the state dir herdr injects
+  (`HERDR_PLUGIN_STATE_DIR`) or, when the tool runs on its own, the same
+  directory worked out
+  (`${XDG_STATE_HOME:-~/.local/state}/herdr/plugins/asumaran.asgotochanged`),
+  so the popup and a run from the shell share settings and caches. The same
+  file in every tool of the family.
+- `setting.go`: `loadSetting`, `saveSetting`: a setting the tool remembers,
   one plain-text file each in the state dir. Every option of the panel is
   kept this way, per tool. The same file in every tool of the family that
   needs it.
-- `listmouse.go` — `inList`, `rowUnder`, `wheelKey`: the mouse over the list.
+- `listmouse.go`: `inList`, `rowUnder`, `wheelKey`: the mouse over the list.
   The wheel goes through the same code as the arrows; a click moves the
   cursor and never opens anything. The same file in every tool of the family.
-- `prompt.go` — the filter input: its prompt (with the tool's name only outside
+- `prompt.go`: the filter input: its prompt (with the tool's name only outside
   herdr's popup), the placeholder, the `(dev)` mark on the edge over the
-  input. The same
-  file in every tool of the family.
-- `helpfoot.go` — the help line at the foot, cut to the width, and the key
-  that opens the panel. The same file in every tool of the family.
-- `panel.go` — the panel `f1` opens over the frame: options to change in
+  input. `typeInto` hands a message to the input and reports whether the query
+  changed: a key, a terminal paste and the input's own `ctrl+v` all edit it,
+  and the caller filters again only when it did. The same file in every tool
+  of the family.
+- `helpfoot.go`: the help line at the foot, cut to the width, and the key that
+  opens the panel. `footLine` is what the foot shows: a flash first, then a
+  notice in the error color, else the help. The same file in every tool of the
+  family.
+- `panel.go`: the panel `f1` opens over the frame: options to change in
   place and every key under them (`option`, `panel`, `panelLines`,
   `overlay`). The same file in every tool of the family.
-- `listnav.go` — `listNav`: the keys that move the cursor through a list and
-  where each one takes it, group headers skipped. `scrollTo` keeps the
-  cursor in view, with the header of its group when there is one. `emptyList`
-  is what a list says instead of rows: the error, `No matches`, or the
-  tool's own reason. The same file in every tool
-  of the family.
-- `highlight.go` — `highlight`/`highlightFrom`, `matchOver`, `onSel`,
+- `listnav.go`: `listNav`: the keys that move the cursor through a list and
+  where each one takes it, group headers skipped. `scrollTo` keeps the cursor
+  in view together with the row `withHeader` names: the header of its group
+  when that is the row right above. `emptyList` is what a list says instead of
+  rows: the error that kept it from loading, in the error color, `No matches`,
+  or the tool's own reason. The same file in every tool of the family.
+- `highlight.go`: `highlight`/`highlightFrom`, `matchOver`, `onSel`,
   `selPad` and the `stSel`/`stMatch` styles: how a match and the selected row
   look. The same file in every tool of the family.
-- `pathcells.go` — `pathCells`, `pathTail`, `tailCut`: a path cut to a width
+- `flash.go`: `flash`, `flashMsg`, `clearFlashMsg`: a confirmation that takes
+  the help line for a moment. The same file in every tool of the family.
+- `clipboard.go`: `copyCmd`: feeds a text to the system clipboard and reports
+  it with a `flashMsg`; `ASGOTOCHANGED_CLIPBOARD` replaces the command. The
+  same file in every tool of the family.
+- `border.go`: `hline`, `framed`, `fit`, `scrollPos`: the primitives the frame
+  is drawn with (an edge with texts set into it, a line between the frame's
+  sides, the position a scrolled viewport reports on an edge). `fitLines` is
+  content as exactly so many lines of a width, and `popupView` is the
+  `tea.View` every tool returns: the alt screen and, while the mouse is on,
+  cell-motion mouse reports. The same file in every tool of the family.
+- `homepath.go`: `tildePath`, `homeDir`, `homeRel`: a path with the home
+  directory abbreviated to `~`. The same file in every tool of the family that
+  shows paths.
+- `fatal.go`: `fatal(tool, msg)`: an error that keeps the tool from starting.
+  In herdr's popup the message is held until enter, because the pane closes
+  with the process and takes stderr with it; in a shell it is plain stderr and
+  exit 1. The same file in every tool of the family that needs it.
+- `rank.go`: `rank`: with a query the list is a search result, best score
+  first; in a grouped list the groups go by their best item and keep their
+  items together, and equal scores keep the list's own order. The same file in
+  every tool of the family that ranks its matches.
+- `panecwd.go`: `paneDirs`, `paneCwd`, `enterPaneCwd`: which directory a popup
+  was opened from. herdr starts a plugin pane in the plugin's own directory
+  and hands over `focused_pane_cwd` and `workspace_cwd` in
+  `HERDR_PLUGIN_CONTEXT_JSON`; a plain run uses the working directory. The
+  same file in every tool of the family that needs it.
+- `gitrun.go`: `runGit`: git in the current directory, with git's own stderr
+  as the error, and `insideWorkTree`. The same file in every tool of the
+  family that needs it.
+- `diffmode.go`: how a diff is laid out and fetched: the modes `ctrl+t` walks
+  (`effectiveDiff`, `diffLabel`), what the main section's bottom edge says
+  about the diff (`diffEdge`), and `limitedOutput`, which runs the command
+  that prints it without letting a huge one in (`maxDiffBytes` is each tool's
+  own). The same file in every tool of the family that shows diffs.
+- `pathcells.go`: `pathCells`, `pathTail`, `tailCut`: a path cut to a width
   by its head, its prefix dimmed, its matches marked. The same file in every
   tool that lists paths.
-- `frame.go` — the single-frame layout shared by the family: `hline`, `fit`,
-  `framed`, `frameHead`, `splitMain`, `scrollPos` and the section rows
-  (`mainY`, `listY`, `frameRows`, each with or without the optional context
-  line). Copied, not imported: the same file ships in asgotosession, asgotonotes,
-  asgotopr and asgotoissues. A pull request only needs to change it here; the
-  maintainer ports the change to the other copies.
-- `hunk.go` — hunk as the diff renderer, copied from asgitlog: hunk is a
+- `frame.go`: the single-frame layout the pickers share: `frameHead`,
+  `splitMain` (list and preview) and the section rows (`mainY`, `listY`,
+  `frameRows`, each with or without the optional context line), drawn with the
+  primitives of `border.go`. Copied, not imported: the same file ships in
+  asgoto, asgotopr, asgotoissues, asgotonotes and asgotosession (all under
+  github.com/asumaran), and there is no shared library. A pull request only
+  needs to change it here; the maintainer ports the change to the other
+  copies.
+- `hunk.go`: hunk as the diff renderer, copied from asgitlog: hunk is a
   full-screen TUI with no static output, so it runs on a tall pty behind a
   terminal emulator and the emulated screen is read back as ANSI lines.
   The same `hunk.go` and `hunk_test.go` ship in github.com/asumaran/asgitlog
   (copied, not imported). A pull request only needs to change them here; the
-  maintainer ports the change. Only the renderer is shared: the cache and the
-  diff modes differ on purpose.
-- `preview.go` — the diff as a `tea.Cmd`: cancellable, a partial frame then
+  maintainer ports the change.
+- `preview.go`: the diff as a `tea.Cmd`: cancellable, a partial frame then
   the final one, diff modes.
-- `rendercache.go`: the rendered diffs kept on disk between runs, and
-  `difftool.go`: the renderers (`diffTool`, `toolBin`, `pickTool`,
-  `renderPatch`). Both are the same files asgitlog ships.
-- `split.go` — the divider between the list and the preview: `loadSplit`,
-  `saveSplit`, `stepSplit`, `splitWidths`. The file is copied, not imported:
-  the same one ships in asgotosession, asgotonotes, asgotopr and asgotoissues (all under
-  github.com/asumaran), and there is no shared library. A pull request only
-  needs to change it here; the maintainer ports the change to the other copies.
-- `ui.go` — the bubbletea model/Update/View, editing through
-  `tea.ExecProcess`, mouse, styles, `pathCells`.
-- `scripts/pty-check.py` — end-to-end TUI driver (see Testing).
+- `rendercache.go`: the rendered diffs kept on disk between runs, addressed by
+  an id that cannot go stale (a commit's hash, or `patchID`, a hash of the
+  patch itself) plus whatever else changes the output: the renderer, its
+  binary and configuration, the width, the mode. The same file asgitlog ships.
+- `difftool.go`: what draws a diff: hunk or delta, or git's own colors when
+  neither is installed (`diffTool`, `toolBin`, `pickTool`, `renderPatch`).
+  `diffPrefs` is the three diff options of the panel (renderer, diff mode,
+  whitespace), what each value means and what is flashed about a change. The
+  same file asgitlog ships.
+- `split.go`: the divider between the list and the preview: `loadSplit`,
+  `saveSplit`, `stepSplit`, `splitWidths`, `moveSplit` (one step, remembered)
+  and `sizePanes` (the list and the preview get their share of the main
+  section). Copied, not imported, like `frame.go`: the same file ships in
+  asgotopr, asgotoissues, asgotonotes and asgotosession.
+- `ui.go`: the bubbletea model/Update/View, editing through
+  `tea.ExecProcess`, mouse, styles.
+- `scripts/demo/`: the demo scenario (`scenario.sh` + `keys.json`) that
+  `asdemo record` (asumaran/asdemokit, the recording tool shared by the herdr
+  plugins) uses to re-record `docs/demo.gif`; see `scripts/demo/README.md`.
+- `scripts/pty-check.py`: end-to-end TUI driver (see Testing).
 
 ## Build & run
 
@@ -107,6 +162,7 @@ go build -o asgotochanged .    # plugin runs ./asgotochanged from the repo root
 ./asgotochanged -dump          # changed files of the current checkout, no TTY
 ./asgotochanged -dump -query x # matches with scores
 go vet ./... && go test ./...
+scripts/pty-check.py ./asgotochanged   # end-to-end TUI check on a pty (python3 + pyte)
 herdr plugin link "$PWD"   # link does NOT run [[build]]; go build yourself
 ```
 
@@ -141,6 +197,12 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   prompt.
   herdr sets `HERDR_PLUGIN_ENTRYPOINT_ID` for a plugin pane; that is how the
   two cases are told apart.
+  Whatever reaches the input goes through `toInput`: a key, a paste from the
+  terminal (`tea.PasteMsg`) and the input's own `ctrl+v` filter the list the
+  same way (`typeInto`), and a message that leaves the query alone (a caret
+  move, the blink) never moves the cursor. A paste under the open panel is
+  dropped. A query made only of spaces, or a bare `~` or `'`, is not a query
+  (`hasTerms`): it does not filter, rank or move the cursor.
 - **Help and options**: the line at the foot shows the tool's own actions,
   the panel's key and the quit keys (`helpfoot.go`). `f1` opens the panel (`panel.go`, the same file in
   every tool of the family): the options on top, to change with `←`/`→` or
@@ -177,8 +239,13 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   new so every row is a plain pathspec. `-z` everywhere: paths are never
   quoted or escaped. Rows are sorted by path.
 - **Base**: `origin/HEAD`, then `origin/{main,master,develop}`, then the local
-  names, the same order as `gcm` in the dotfiles and `aschanged`. No fetch.
-  No base or no merge base is a load error shown in the list column.
+  names, the same order as `aschanged`. No fetch.
+- **Errors**: outside a work tree the tool does not start: the shared `fatal`
+  (`fatal.go`) holds the message until enter in the popup and is stderr and
+  exit 1 in a shell. No base or no merge base is a load error: it is shown in
+  the list in the error color (`loadErr` through the shared `emptyList`), as
+  in every tool of the family. Notices (a deleted file, an editor that failed)
+  take the help line in the error color until the next key (`footLine`).
 - **cwd**: herdr starts plugin panes in the plugin's own directory and
   describes the invocation in `HERDR_PLUGIN_CONTEXT_JSON`; `enterPaneCwd`
   moves to `focused_pane_cwd` (else `workspace_cwd`). git runs with `-C
@@ -190,7 +257,14 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   to delta when hunk is missing). With neither (`ASGOTOCHANGED_HUNK=none` and
   `ASGOTOCHANGED_DELTA=none`, or not installed) the same diff with
   `--color=always`. The renderer model (`diffTool`, `toolBin`, `pickTool`,
-  `renderPatch`) is `difftool.go`, the same file asgitlog ships.
+  `renderPatch`) is `difftool.go`, the same file asgitlog ships. So are the
+  three options of the panel (`diffPrefs`): `setOption` hands the change to
+  `diffPrefs.set`, which says what to flash. The panel switches to either
+  renderer that is installed, delta included while hunk is missing; one that
+  is not installed flashes `<name> not found` and changes nothing; with
+  neither installed a diff mode change says `no renderer found: plain git
+  colors`. Only the option that changed is saved, so a setting never chosen
+  stays unset.
 - **Renders are two-stage, and that repaint is kept off the screen**: hunk
   paints the diff first and the syntax highlighting a few hundred
   milliseconds later, so a render reports a `partial` frame (shown, never
@@ -282,7 +356,8 @@ forces a full redraw (pty resize + SIGWINCH) before reading a frame.
 
 ## Commits & branches
 
-- Conventional Commits: `type(scope): description`.
+- Conventional Commits: `type(scope): description` (feat, fix, chore, docs,
+  style, refactor, test, perf).
 - Never mention AI tooling in commits, PRs, or any repo-visible text as the
   author of changes.
 - Default branch is `main`. Don't commit, tag, or push unless explicitly
@@ -291,7 +366,7 @@ forces a full redraw (pty resize + SIGWINCH) before reading a frame.
 
 ## Releasing
 
-`scripts/release.sh <X.Y.Z>` — clean-tree + vet/build/test gate, CHANGELOG
+`scripts/release.sh <X.Y.Z>`: clean-tree + vet/build/test gate, CHANGELOG
 generation from commit subjects, manifest version sync, commit + tag + GitHub
 release; CI (`.github/workflows/release.yml`) attaches
 the `asgotochanged-<os>-<arch>` binaries (macOS and Linux, arm64 and amd64). Releasing never touches the linked plugin's

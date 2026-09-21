@@ -71,14 +71,18 @@ row per file, by path, with its status:
 | `?` | untracked |
 
 The top line says which checkout and branch you are looking at. The edge under
-it shows how many files match out of the total and, in brackets, the base the
-branch is compared against.
+it shows, in brackets, the base the branch is compared against, and the edge
+under the list how many files match out of the total.
+
+Pasting into the filter (a terminal paste or `ctrl+v`) filters like typing
+does. A query of spaces only, or a bare `~` or `'`, is not a query yet: the
+list stays as it is and the cursor does not move.
 
 | key | action |
 | --- | --- |
 | `enter` | open the file in the editor; quitting the editor comes back to the list |
 | `ctrl+t` | diff mode: auto, side by side, single column (remembered) |
-| panel: Diff renderer | render the diffs with hunk or with delta, as in asgitlog (remembered per tool; hunk by default, delta when hunk is not installed) |
+| panel: Diff renderer | render the diffs with hunk or with delta, as in asgitlog (remembered per tool; hunk by default, delta when hunk is not installed). Choosing one that is not installed says `<name> not found` and changes nothing |
 | `ctrl+s` | show or ignore whitespace changes, like GitHub's "Hide whitespace" (`git diff -w`, remembered); `[-w]` on the diff's bottom edge while it is on |
 | `ctrl+y` | copy the path of the file under the cursor, relative to the repository root as the list shows it; the help line confirms it for a moment |
 | `↑/↓`, `ctrl+p`/`ctrl+n` | move the cursor |
@@ -89,7 +93,7 @@ branch is compared against.
 | `f1` | open the panel: the renderer, the diff mode and the whitespace to change in place, and every key (`esc` closes it) |
 | `shift+←`/`shift+→` | resize the list; the split is remembered (the list takes a quarter of the width by default) |
 | click | select a row |
-| `esc`, `q` with an empty filter | quit |
+| `esc`, `ctrl+c`, `q` with an empty filter | quit |
 
 As a command: `asgotochanged [query]`, where `query` is the initial filter.
 
@@ -113,9 +117,14 @@ As a command: `asgotochanged [query]`, where `query` is the initial filter.
   of time and finished renders are kept in `~/.cache/asgotochanged` between runs
   (`ASGOTOCHANGED_NO_CACHE=1` turns the cache off). You only see the colors come
   in the first time a diff is ever rendered.
+- With neither hunk nor delta installed, changing the diff mode says
+  `no renderer found: plain git colors`.
+- Outside a git work tree the popup says so and waits for `enter` (from a
+  shell it is a plain error). A branch with no base to compare against is
+  reported in the list, in red.
 - asgotochanged only reads the repository. It never stages, commits or checks
-  anything out. What it writes is its own: the diff mode, the whitespace setting and
-  that cache.
+  anything out. What it writes is its own: its settings (the renderer, the
+  diff mode, the whitespace and the size of the list) and that cache.
 
 ## Development
 
@@ -123,17 +132,32 @@ As a command: `asgotochanged [query]`, where `query` is the initial filter.
 go build -o asgotochanged .   # local build (plugin runs ./asgotochanged from the repo root)
 ./asgotochanged -dump         # print the changed files of the current checkout (no TTY)
 ./asgotochanged -dump -query total   # matches with their scores
+./asgotochanged -version      # print the embedded version
 go vet ./... && go test ./...
 scripts/pty-check.py ./asgotochanged   # end-to-end TUI check on a pty (python3 + pyte)
 herdr plugin link "$PWD"   # register the working copy (no build step)
 ```
 
+Runtime state (the settings `renderer`, `diff`, `whitespace` and
+`split-columns`) lives in `HERDR_PLUGIN_STATE_DIR`; standalone runs use the
+same directory (`~/.local/state/herdr/plugins/asumaran.asgotochanged/`). The
+rendered diffs are a cache and live in
+`${XDG_CACHE_HOME:-~/.cache}/asgotochanged/renders`.
+
 `ASGOTOCHANGED_OPENER` replaces the editor command; `ASGOTOCHANGED_HUNK` and
 `ASGOTOCHANGED_DELTA` replace the renderers' binaries (`none` turns one off). `ASGOTOCHANGED_CLIPBOARD` replaces the
 clipboard command `ctrl+y` feeds the path to (`pbcopy` on macOS, else the first
 of `wl-copy`, `xclip` and `xsel`); the tests point it at a stub.
+`ASGOTOCHANGED_NO_CACHE=1` turns the disk cache off.
 `ASGOTOCHANGED_POPUP_WIDTH` / `ASGOTOCHANGED_POPUP_HEIGHT` override the popup
 size from the manifest.
+
+## Demo recording
+
+`docs/demo.gif` is recorded with
+[asdemokit](https://github.com/asumaran/asdemokit): `asdemo
+record` from the repo root replays `scripts/demo/keys.json` against an
+isolated herdr session described by `scripts/demo/scenario.sh`.
 
 ## Releasing
 
