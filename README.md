@@ -78,7 +78,7 @@ branch is compared against.
 | --- | --- |
 | `enter` | open the file in the editor; quitting the editor comes back to the list |
 | `ctrl+t` | diff mode: auto, side by side, single column (remembered) |
-| panel: Diff renderer | render the diffs with hunk or with delta, as in asgitlog (remembered; hunk by default, delta when hunk is not installed) |
+| panel: Diff renderer | render the diffs with hunk or with delta, as in asgitlog (remembered per tool; hunk by default, delta when hunk is not installed) |
 | `ctrl+s` | show or ignore whitespace changes, like GitHub's "Hide whitespace" (`git diff -w`, remembered); `[-w]` on the diff's bottom edge while it is on |
 | `ctrl+y` | copy the path of the file under the cursor, relative to the repository root as the list shows it; the help line confirms it for a moment |
 | `↑/↓`, `ctrl+p`/`ctrl+n` | move the cursor |

@@ -13,8 +13,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -94,46 +92,36 @@ func cwd() string {
 
 // ---- preferences ----
 
+// Each setting is a file in the state dir (setting.go).
+
 func loadDiffMode() string {
-	data, _ := os.ReadFile(filepath.Join(stateDir(), "diff"))
-	if d := strings.TrimSpace(string(data)); d == diffSBS || d == diffSingle {
+	if d := loadSetting(stateDir(), "diff"); d == diffSBS || d == diffSingle {
 		return d
 	}
 	return diffAuto
 }
 
-func saveDiffMode(mode string) {
-	_ = os.MkdirAll(stateDir(), 0o755)
-	_ = os.WriteFile(filepath.Join(stateDir(), "diff"), []byte(mode+"\n"), 0o644)
-}
+func saveDiffMode(mode string) { saveSetting(stateDir(), "diff", mode) }
 
-// loadRenderer is the renderer left chosen in the panel. hunk is what this tool
-// drew its diffs with before it had a choice, so it stays the default.
+// loadRenderer is the renderer left chosen in the panel: hunk, the family's
+// default, unless delta was.
 func loadRenderer() string {
-	data, _ := os.ReadFile(filepath.Join(stateDir(), "renderer"))
-	if strings.TrimSpace(string(data)) == toolDelta {
+	if loadSetting(stateDir(), "renderer") == toolDelta {
 		return toolDelta
 	}
 	return toolHunk
 }
 
-func saveRenderer(tool string) {
-	_ = os.MkdirAll(stateDir(), 0o755)
-	_ = os.WriteFile(filepath.Join(stateDir(), "renderer"), []byte(tool+"\n"), 0o644)
-}
+func saveRenderer(tool string) { saveSetting(stateDir(), "renderer", tool) }
 
-func loadIgnoreWS() bool {
-	data, _ := os.ReadFile(filepath.Join(stateDir(), "whitespace"))
-	return strings.TrimSpace(string(data)) == "ignore"
-}
+func loadIgnoreWS() bool { return loadSetting(stateDir(), "whitespace") == "ignore" }
 
 func saveIgnoreWS(ignore bool) {
 	value := "show"
 	if ignore {
 		value = "ignore"
 	}
-	_ = os.MkdirAll(stateDir(), 0o755)
-	_ = os.WriteFile(filepath.Join(stateDir(), "whitespace"), []byte(value+"\n"), 0o644)
+	saveSetting(stateDir(), "whitespace", value)
 }
 
 func wsLabel(ignore bool) string {

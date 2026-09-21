@@ -45,6 +45,10 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
 - `statedir.go` — `stateDirFor`: the state dir herdr injects, or a fixed path
   under the config home when the tool runs on its own. The same file in every
   tool of the family that keeps state.
+- `setting.go` — `loadSetting`, `saveSetting`: a setting the tool remembers,
+  one plain-text file each in the state dir. Every option of the panel is
+  kept this way, per tool. The same file in every tool of the family that
+  needs it.
 - `listmouse.go` — `inList`, `rowUnder`, `wheelKey`: the mouse over the list.
   The wheel goes through the same code as the arrows; a click moves the
   cursor and never opens anything. The same file in every tool of the family.
