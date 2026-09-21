@@ -1,3 +1,8 @@
+## v0.10.2 (2026-09-20)
+
+* chore(git): ignore the linux release binaries (30b416c)
+* refactor(list): keep the cursor in view with scrollTo (954e959)
+
 ## v0.10.1 (2026-09-20)
 
 * refactor(prefs): keep the settings with setting.go (0b19608)
