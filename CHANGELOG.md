@@ -1,3 +1,14 @@
+## v0.11.0 (2026-09-21)
+
+* docs: describe the new shared files and flashes (e937079)
+* refactor(preview): render through renderqueue.go (94420a0)
+* docs(readme): the opener is a command line (c3f9471)
+* refactor(ui): read the opener from opener.go (ff6e78d)
+* docs: match the docs to the shared helpers (d6e8970)
+* fix(preview): restart a render cancelled midway (e9c2074)
+* test(pty): cover the whitespace toggle and wheel (18da97e)
+* refactor(list): word the empty list with emptyList (aefcfc6)
+
 ## v0.10.2 (2026-09-20)
 
 * chore(git): ignore the linux release binaries (30b416c)
