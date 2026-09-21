@@ -12,6 +12,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -54,7 +55,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "asgotochanged:", err)
 			os.Exit(1)
 		}
-		runDump(repo, ch, *query, time.Since(start))
+		runDump(os.Stdout, repo, ch, *query, time.Since(start))
 		return
 	}
 
@@ -115,13 +116,13 @@ func saveIgnoreWS(ignore bool) {
 
 // runDump prints what the popup would list, without a TTY. With -query it
 // prints the matches and their scores instead.
-func runDump(repo repoInfo, ch changes, query string, took time.Duration) {
-	fmt.Printf("%s\nbase: %s (merge base %.12s), %d files, loaded in %s\n",
+func runDump(w io.Writer, repo repoInfo, ch changes, query string, took time.Duration) {
+	fmt.Fprintf(w, "%s\nbase: %s (merge base %.12s), %d files, loaded in %s\n",
 		repo, ch.base, ch.mergeBase, len(ch.files), took.Round(time.Millisecond))
 	if query != "" {
-		fmt.Printf("query %q:\n", query)
+		fmt.Fprintf(w, "query %q:\n", query)
 		for _, r := range filterFiles(ch.files, query) {
-			fmt.Printf("  %5d  %s %s\n", r.score, r.f.status, r.f.path)
+			fmt.Fprintf(w, "  %5d  %s %s\n", r.score, r.f.status, r.f.path)
 		}
 		return
 	}
@@ -133,7 +134,7 @@ func runDump(repo repoInfo, ch changes, query string, took time.Duration) {
 		case f.status == "?":
 			stat = ""
 		}
-		fmt.Printf("%s  %-60s %s\n", f.status, f.path, stat)
+		fmt.Fprintf(w, "%s  %-60s %s\n", f.status, f.path, stat)
 	}
 }
 

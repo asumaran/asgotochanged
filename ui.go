@@ -149,13 +149,10 @@ type model struct {
 	height int
 	split  int // the preview's share of the width, percent
 
-	// preview render cache
-	renders map[string]string
+	// the renders: done, failed and under way (renderqueue.go)
+	queue   *renderQueue[string]
 	prevKey string
-	// inflight is the renders running, by key: the selected file's and the
-	// ones rendered ahead. Each carries the cancel of its context.
-	inflight map[string]context.CancelFunc
-	dying    map[string]bool // given up and still to report: they keep their slot and their key
+	dir     int // the way the cursor last moved (1, -1), for what is rendered ahead
 }
 
 func newModel(repo repoInfo, ch changes, loadErr, diffMode, hunkBin, query string) model {
@@ -173,9 +170,7 @@ func newModel(repo repoInfo, ch changes, loadErr, diffMode, hunkBin, query strin
 		prevVP:   viewport.New(viewport.WithWidth(60), viewport.WithHeight(16)),
 		help:     help.New(),
 		keys:     defaultKeys(),
-		renders:  map[string]string{},
-		inflight: map[string]context.CancelFunc{},
-		dying:    map[string]bool{},
+		queue:    newRenderQueue[string](),
 		width:    94,
 		height:   24,
 	}
@@ -291,6 +286,12 @@ func (m *model) setCursor(i int) {
 	if i < 0 || i >= len(m.rows) {
 		return
 	}
+	if i != m.cursor {
+		m.dir = 1
+		if i < m.cursor {
+			m.dir = -1
+		}
+	}
 	m.cursor = i
 }
 
@@ -300,20 +301,11 @@ func (m *model) ensureVisible() {
 
 // ---- preview ----
 
-const (
-	// maxPipelines bounds the renders running at once, so holding an arrow
-	// key never piles up hunk processes.
-	maxPipelines = 3
-	// prefetchAround is how many rows on each side of the cursor are rendered
-	// ahead, nearest first. hunk paints a diff and highlights it a moment
-	// later; rendering ahead keeps that repaint off the screen, so moving
-	// through the list shows finished diffs, as asgitlog does.
-	prefetchAround = 6
-)
-
 // updatePreview refreshes the right column with the diff of the file under
-// the cursor, from the render cache when it is there, and renders the rows
-// around it ahead of time.
+// the cursor, from the renders when it is there, and renders the rows around
+// it ahead of time: hunk paints a diff and highlights it a moment later, and
+// rendering ahead keeps that repaint off the screen. What runs, what waits and
+// what is given up is the queue's business (renderqueue.go).
 func (m *model) updatePreview() tea.Cmd {
 	f := m.current()
 	if f == nil {
@@ -321,33 +313,43 @@ func (m *model) updatePreview() tea.Cmd {
 		m.prevVP.SetContent("")
 		return nil
 	}
-	mode := fileDiff(m.diffMode, m.prevW(), *f)
-	key := previewKey(m.repo.Top, *f, m.prevW(), mode, m.tool())
-	if key == m.prevKey {
-		_, done := m.renders[key]
-		_, running := m.inflight[key]
-		if done || running {
-			return m.prefetch()
-		}
-		// Its render was given up (an A, B, A selection) and has now reported:
-		// start it again, or the row would say "rendering…" for good.
+	key := m.keyOf(*f)
+	keep := m.wanted(key)
+	m.queue.cancelStale(keep)
+	if key == m.prevKey && (m.queue.settled(key) || m.queue.running(key)) {
+		return m.prefetch(keep) // on screen already, or about to be
 	}
 	if key != m.prevKey {
 		m.prevVP.GotoTop()
 	}
 	m.prevKey = key
-	if c, ok := m.renders[key]; ok {
+	if c, ok := m.queue.get(key); ok { // a partial render counts
 		m.prevVP.SetContent(c)
-		return m.prefetch()
+		return m.prefetch(keep)
+	}
+	if msg, failed := m.queue.failed[key]; failed {
+		m.prevVP.SetContent(errorBlock(msg, m.prevW()))
+		return m.prefetch(keep)
 	}
 	m.prevVP.SetContent(stDim.Render("rendering…"))
-	if _, running := m.inflight[key]; running {
-		return nil // rendered ahead and about to report
+	return m.startRender(*f, keep, true)
+}
+
+// keyOf is the render key of f as things stand (width, mode, renderer).
+func (m *model) keyOf(f changedFile) string {
+	return previewKey(m.repo.Top, f, m.prevW(), fileDiff(m.diffMode, m.prevW(), f), m.tool())
+}
+
+// wanted is the render keys worth having, the most wanted first: the
+// selection's, then the rows around it (renderWindow).
+func (m *model) wanted(key string) []string {
+	keys := []string{key}
+	for _, i := range renderWindow(m.cursor, m.dir) {
+		if i >= 0 && i < len(m.rows) {
+			keys = append(keys, m.keyOf(m.rows[i].f))
+		}
 	}
-	if len(m.inflight) >= maxPipelines {
-		m.cancelFarthest() // the selection never waits for a slot
-	}
-	return m.startRender(*f, key, mode)
+	return keys
 }
 
 // tool is what renders the diffs now: the remembered choice when it is
@@ -373,7 +375,7 @@ func (m *model) setOption(id string, v int) tea.Cmd {
 		if flash == "" {
 			return nil
 		}
-		return m.setFlash(flash)
+		return m.flash.fail(flash) // the option could not change
 	}
 	m.toolPref, m.diffMode, m.ignoreWS = p.tool, p.mode, p.ignoreWS
 	switch id { // only what changed is written: a setting never chosen stays unset
@@ -387,81 +389,36 @@ func (m *model) setOption(id string, v int) tea.Cmd {
 	return tea.Batch(m.setFlash(flash), m.updatePreview())
 }
 
-func (m *model) startRender(f changedFile, key, mode string) tea.Cmd {
-	ctx, cancel := context.WithCancel(context.Background())
-	m.inflight[key] = cancel
-	return renderPreviewCmd(ctx, m.repo.Top, m.ch.mergeBase, f, key, m.prevW(), mode, m.tool())
-}
-
-// around is the rows worth having rendered besides the selected one, nearest
-// first, the row below before the row above.
-func (m *model) around() []int {
-	var rows []int
-	for d := 1; d <= prefetchAround; d++ {
-		for _, i := range []int{m.cursor + d, m.cursor - d} {
-			if i >= 0 && i < len(m.rows) {
-				rows = append(rows, i)
-			}
-		}
+// startRender starts the render of f when the queue has a slot for it.
+func (m *model) startRender(f changedFile, keep []string, wanted bool) tea.Cmd {
+	key := m.keyOf(f)
+	ctx := m.queue.start(key, keep, wanted)
+	if ctx == nil {
+		return nil
 	}
-	return rows
+	return renderPreviewCmd(ctx, m.repo.Top, m.ch.mergeBase, f, key, m.prevW(), fileDiff(m.diffMode, m.prevW(), f), m.tool())
 }
 
 // prefetch starts the renders of the rows around the cursor while there are
 // free pipelines. It runs again whenever a render reports back, so the window
 // fills up a few at a time.
-func (m *model) prefetch() tea.Cmd {
+func (m *model) prefetch(keep []string) tea.Cmd {
 	if m.tool().plain() {
 		return nil // plain git is instant: nothing to hide
 	}
 	var cmds []tea.Cmd
-	for _, i := range m.around() {
-		if len(m.inflight) >= maxPipelines {
+	for _, i := range renderWindow(m.cursor, m.dir) {
+		if !m.queue.free() {
 			break
 		}
-		f := m.rows[i].f
-		mode := fileDiff(m.diffMode, m.prevW(), f)
-		key := previewKey(m.repo.Top, f, m.prevW(), mode, m.tool())
-		if _, ok := m.renders[key]; ok {
+		if i < 0 || i >= len(m.rows) {
 			continue
 		}
-		if _, ok := m.inflight[key]; ok {
-			continue
+		if f := m.rows[i].f; !m.queue.settled(m.keyOf(f)) {
+			cmds = append(cmds, m.startRender(f, keep, false))
 		}
-		cmds = append(cmds, m.startRender(f, key, mode))
 	}
 	return tea.Batch(cmds...)
-}
-
-// cancelFarthest gives up the render ahead that is least likely to be wanted:
-// one that is no longer around the cursor, else the farthest one.
-func (m *model) cancelFarthest() {
-	keep := map[string]int{}
-	for rank, i := range m.around() {
-		f := m.rows[i].f
-		keep[previewKey(m.repo.Top, f, m.prevW(), fileDiff(m.diffMode, m.prevW(), f), m.tool())] = rank
-	}
-	victim, worst := "", -1
-	for key := range m.inflight {
-		if m.dying[key] {
-			continue
-		}
-		rank, ok := keep[key]
-		if !ok {
-			victim = key
-			break
-		}
-		if rank > worst {
-			victim, worst = key, rank
-		}
-	}
-	if cancel := m.inflight[victim]; cancel != nil {
-		// It stays in inflight until it reports, as in asgitlog: the process
-		// is still dying and holds its slot, and the same key started again
-		// now would be killed by the late report of this one.
-		cancel()
-		m.dying[victim] = true
-	}
 }
 
 func (m *model) setFlash(s string) tea.Cmd { return m.flash.set(s) }
@@ -525,25 +482,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.updatePreview()
 
 	case previewMsg:
-		if msg.next == nil { // final, failed or cancelled: the pipeline is over
-			if cancel := m.inflight[msg.key]; cancel != nil {
-				cancel()
-				delete(m.inflight, msg.key)
-				delete(m.dying, msg.key)
-			}
-		}
-		if msg.cancelled {
-			return m, m.updatePreview()
-		}
-		if !msg.partial {
-			m.renders[msg.key] = msg.content
-		}
-		if msg.key == m.prevKey {
+		m.queue.report(msg.key, msg.content, msg.partial, msg.next == nil, msg.cancelled, msg.err)
+		if c, ok := m.queue.get(msg.key); ok && msg.key == m.prevKey && !msg.cancelled {
 			// The final frame replaces the partial one in place: same lines,
 			// now highlighted, so the scroll position is kept.
 			y := m.prevVP.YOffset()
-			m.prevVP.SetContent(msg.content)
+			m.prevVP.SetContent(c)
 			m.prevVP.SetYOffset(y)
+		} else if msg.key == m.prevKey && msg.err != nil {
+			m.prevKey = "" // updatePreview shows the failure
 		}
 		return m, tea.Batch(msg.next, m.updatePreview())
 
@@ -567,6 +514,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case flashMsg:
 		return m, m.setFlash(string(msg))
+
+	case flashErrMsg:
+		return m, m.flash.fail(string(msg))
 
 	case clearFlashMsg:
 		m.flash.clear(msg)

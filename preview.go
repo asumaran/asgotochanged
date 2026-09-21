@@ -43,8 +43,9 @@ type previewMsg struct {
 	key     string
 	content string
 	// partial marks hunk's first frame: the diff is there, the syntax
-	// highlighting is not. It is shown and never cached.
+	// highlighting is not. It is shown until the final one replaces it.
 	partial bool
+	err     error
 	// cancelled marks a render whose context was cancelled because the
 	// selection moved on; it carries nothing worth showing.
 	cancelled bool
@@ -90,7 +91,7 @@ func renderPreviewCmd(ctx context.Context, top, mergeBase string, f changedFile,
 			return previewMsg{key: key, cancelled: true}
 		}
 		if err != nil {
-			return rendered(stError.Render(truncate(err.Error(), width)), false)
+			return previewMsg{key: key, err: err}
 		}
 		return rendered(body, false)
 	}
@@ -115,12 +116,10 @@ func renderDiff(ctx context.Context, top, mergeBase string, f changedFile, width
 		return "", nil
 	}
 	patch := []byte(out + "\n")
-	if tool.plain() { // as fast as reading it back
-		return renderPatch(ctx, tool, patch, width, sbs, early)
-	}
 	// The render is addressed by the patch itself (see rendercache.go): a hit
 	// is the finished, highlighted frame at once, with no partial frame before
-	// it, and an edited file simply misses.
+	// it, and an edited file simply misses. Plain git is never stored: it is
+	// as fast as reading it back.
 	id, mode := patchID(patch), diffSingle
 	if sbs {
 		mode = diffSBS

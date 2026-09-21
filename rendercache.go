@@ -119,7 +119,7 @@ func (c *diskCache) path(tool diffTool, id string, width int, mode string) strin
 // get returns a stored render. A hit is touched, so pruning drops what has
 // not been looked at for the longest.
 func (c *diskCache) get(tool diffTool, id string, width int, mode string) (string, bool) {
-	if c == nil || id == "" {
+	if c == nil || id == "" || tool.plain() { // plain git is as fast as reading it back
 		return "", false
 	}
 	p := c.path(tool, id, width, mode)
@@ -144,7 +144,7 @@ func (c *diskCache) get(tool diffTool, id string, width int, mode string) (strin
 // put stores a render; one without an id (asgitlog's working tree row) is
 // never stored. Failures only cost the next run a render.
 func (c *diskCache) put(tool diffTool, id string, width int, mode, diff string) {
-	if c == nil || id == "" {
+	if c == nil || id == "" || tool.plain() {
 		return
 	}
 	p := c.path(tool, id, width, mode)
