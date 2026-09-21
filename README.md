@@ -144,7 +144,8 @@ same directory (`~/.local/state/herdr/plugins/asumaran.asgotochanged/`). The
 rendered diffs are a cache and live in
 `${XDG_CACHE_HOME:-~/.cache}/asgotochanged/renders`.
 
-`ASGOTOCHANGED_OPENER` replaces the editor command; `ASGOTOCHANGED_HUNK` and
+`ASGOTOCHANGED_OPENER` replaces the editor command (a command line; the path is
+appended); `ASGOTOCHANGED_HUNK` and
 `ASGOTOCHANGED_DELTA` replace the renderers' binaries (`none` turns one off). `ASGOTOCHANGED_CLIPBOARD` replaces the
 clipboard command `ctrl+y` feeds the path to (`pbcopy` on macOS, else the first
 of `wl-copy`, `xclip` and `xsel`); the tests point it at a stub.
