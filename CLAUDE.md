@@ -32,9 +32,11 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
 `go get`). Files are split by concern:
 
 - `main.go`: flags (`-version`, `-dump`, `-query`), the work tree check
-  (`fatal` outside one), the saved diff settings, `tea.NewProgram`, `runDump`.
-- `git.go`: `loadRepoInfo` / `repoInfo.line`, `resolveBase`, `loadChanges`
-  (name-status + untracked + numstat, all NUL-separated), `diffArgs`.
+  (`fatal` outside one), the saved diff settings, `tea.NewProgram`, `runDump`
+  (it writes to an `io.Writer`, so the tests read what `-dump` prints).
+- `git.go`: `resolveBase`, `loadChanges` (name-status + untracked + numstat,
+  all NUL-separated), `diffArgs`. The repository summary of the context line
+  is in `repoinfo.go`.
 - `filter.go`: fuzzy rows over the paths.
 - `match.go`: `findTight`/`tighten`, the fuzzy matcher with one correction: it
   is greedy (first candidate for each rune, left to right), so a query that
@@ -44,7 +46,8 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
   a bare `~` or `'` do not, so they never filter, rank or move the cursor. The
   same file in every tool of the family.
 - `text.go`: `truncate`, `padRight`, `padLeft`: fitting text, styled or not,
-  into cells. The same file in every tool of the family.
+  into cells. `errorBlock` is an error for a preview: every line of it cut to
+  the width, in the error color. The same file in every tool of the family.
 - `statedir.go`: `stateDirFor`: the state dir herdr injects
   (`HERDR_PLUGIN_STATE_DIR`) or, when the tool runs on its own, the same
   directory worked out
@@ -80,11 +83,14 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
 - `highlight.go`: `highlight`/`highlightFrom`, `matchOver`, `onSel`,
   `selPad` and the `stSel`/`stMatch` styles: how a match and the selected row
   look. The same file in every tool of the family.
-- `flash.go`: `flash`, `flashMsg`, `clearFlashMsg`: a confirmation that takes
-  the help line for a moment. The same file in every tool of the family.
+- `flash.go`: `flash`, `flashMsg`, `flashErrMsg`, `clearFlashMsg`: a word that
+  takes the help line for a moment: a confirmation in green (`flash.set`), or
+  a key that could do nothing (`nothing to copy`) in the error color
+  (`flash.fail`). The same file in every tool of the family.
 - `clipboard.go`: `copyCmd`: feeds a text to the system clipboard and reports
-  it with a `flashMsg`; `ASGOTOCHANGED_CLIPBOARD` replaces the command. The
-  same file in every tool of the family.
+  it with a `flashMsg`, or with a `flashErrMsg` when there is nothing to copy
+  or the copy fails; `ASGOTOCHANGED_CLIPBOARD` replaces the command. The same
+  file in every tool of the family.
 - `border.go`: `hline`, `framed`, `fit`, `scrollPos`: the primitives the frame
   is drawn with (an edge with texts set into it, a line between the frame's
   sides, the position a scrolled viewport reports on an edge). `fitLines` is
@@ -118,6 +124,11 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
 - `pathcells.go`: `pathCells`, `pathTail`, `tailCut`: a path cut to a width
   by its head, its prefix dimmed, its matches marked. The same file in every
   tool that lists paths.
+- `opener.go`: `openerArgv`: the command `<TOOL>_OPENER` names, as words, or
+  nothing when the variable is unset and the tool's own default applies. The
+  value is a command line, not a path: `code -n` and a wrapper with flags both
+  work, a path with spaces does not. The same file in every tool of the family
+  that opens something.
 - `frame.go`: the single-frame layout the pickers share: `frameHead`,
   `splitMain` (list and preview) and the section rows (`mainY`, `listY`,
   `frameRows`, each with or without the optional context line), drawn with the
@@ -137,7 +148,26 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
 - `rendercache.go`: the rendered diffs kept on disk between runs, addressed by
   an id that cannot go stale (a commit's hash, or `patchID`, a hash of the
   patch itself) plus whatever else changes the output: the renderer, its
-  binary and configuration, the width, the mode. The same file asgitlog ships.
+  binary and configuration, the width, the mode. Plain git renders are never
+  read from it or written to it, which `get` and `put` decide themselves. The
+  same file asgitlog ships.
+- `renderqueue.go`: `renderQueue`, `renderWindow`: the renders of a list of
+  diffs, the ones that are done, the ones that failed and the ones under way.
+  At most 3 pipelines run at once, the dying ones included: a render nobody
+  wants anymore is cancelled and keeps its slot until it reports back. The
+  selection never waits behind a prefetch: with every slot taken it cancels
+  the least wanted render and starts when that one reports back. A partial
+  render is kept and shown until the final one replaces it, and it stays if
+  the renderer dies on the way; a cancelled one is dropped. A failure is kept,
+  shown as an error and not tried again. At most 128 renders are kept in
+  memory; when full they are all dropped. `renderWindow` is the rows rendered
+  ahead of time: 4 ahead in the direction of travel plus the one behind. The
+  same file in every tool of the family that renders diffs.
+- `repoinfo.go`: `repoInfo`, `loadRepoInfo`, `repoInfo.line`: the repository
+  summary of the context line (checkout, branch, upstream, ahead and behind),
+  fitted to the width: a checkout path that does not fit loses its head, never
+  the branch. The same file in every tool of the family that lists a
+  repository.
 - `difftool.go`: what draws a diff: hunk or delta, or git's own colors when
   neither is installed (`diffTool`, `toolBin`, `pickTool`, `renderPatch`).
   `diffPrefs` is the three diff options of the panel (renderer, diff mode,
@@ -176,7 +206,8 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   context line on top is only for what the rest of the screen cannot say; here
   it is justified, as in asgitlog: which checkout and branch the list is
   about. A checkout path that does not fit loses its head so the branch keeps
-  its place (`repoInfo.line`). The edge under it carries, in brackets, the base
+  its place (`repoInfo.line` in `repoinfo.go`, the same file asgitlog ships).
+  The edge under it carries, in brackets, the base
   (`[vs origin/main]`, asgitlog's scope). The main section is list and diff
   split by a divider; its bottom edge carries the matches/total counter under
   the list and, while the diff overflows, its scroll position on the right. Errors and confirmations take
@@ -212,7 +243,9 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   closes it before it does anything else. `?` is not a help key: the filter
   has the focus, so it is text. Moving, scrolling and resizing are listed in
   the panel only, so the help line stays short enough for a narrow popup. A
-  message (error, notice) takes the help line's place.
+  message takes the help line's place (`footLine`): a flash for a moment (a
+  confirmation in green, a key that could do nothing in the error color),
+  else an error or a notice in the error color.
   This tool's options are the renderer, the diff mode and the whitespace: `options()` lists them as things stand and
   `setOption` is the one place that changes a setting, for the panel and for
   the keys that kept a shortcut. A setting that is chosen once has no key of
@@ -261,30 +294,43 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   three options of the panel (`diffPrefs`): `setOption` hands the change to
   `diffPrefs.set`, which says what to flash. The panel switches to either
   renderer that is installed, delta included while hunk is missing; one that
-  is not installed flashes `<name> not found` and changes nothing; with
+  is not installed flashes `<name> not found` in the error color and changes
+  nothing; with
   neither installed a diff mode change says `no renderer found: plain git
   colors`. Only the option that changed is saved, so a setting never chosen
   stays unset.
 - **Renders are two-stage, and that repaint is kept off the screen**: hunk
   paints the diff first and the syntax highlighting a few hundred
-  milliseconds later, so a render reports a `partial` frame (shown, never
-  cached) and then the final one through `previewMsg.next`; the final frame
-  replaces the partial one keeping the scroll offset. Seeing the colors change
-  under the cursor is the thing to avoid, and two mechanisms (both asgitlog's)
-  do it. **Rendering ahead**: `prefetch` renders the `prefetchAround` rows on
-  each side of the cursor, nearest first, at most `maxPipelines` (3) at once
-  (`m.inflight`, key → cancel); it runs again every time a render reports
-  back, so the window fills a few at a time and moving through the list shows
-  finished diffs. The selection never waits for a slot: `cancelFarthest` gives
-  up a render ahead for it. **Disk cache** (`rendercache.go`, shared with asgitlog;
+  milliseconds later, so a render reports a `partial` frame and then the
+  final one through `previewMsg.next`; the final frame replaces the partial
+  one keeping the scroll offset. Seeing the colors change under the cursor is
+  the thing to avoid, and two mechanisms (both shared with asgitlog) do it.
+  **Rendering ahead**: `prefetch` renders the rows of `renderWindow`, the 4
+  ahead in the direction the cursor last moved (`m.dir`; downwards on a fresh
+  list) plus the one behind, the nearest first. It runs again every time a
+  render reports back, so the window fills a few at a time and moving through
+  the list shows finished diffs. What runs, what waits and what is given up
+  is decided by the shared `renderQueue` (`renderqueue.go`, `m.queue`): at
+  most `maxPipelines` (3) renders at once, the dying ones included; a render
+  that is no longer wanted (`wanted`: the selection, then the window) is
+  cancelled and keeps its slot until it reports back; with every slot taken
+  the selection cancels the least wanted render and starts when that one
+  reports back, so it never waits behind a prefetch. A partial render is kept
+  and shown until the final one replaces it, and it stays if the renderer
+  dies on the way; a cancelled one is dropped. A render that failed is kept
+  as a failure, shown in the preview through the shared `errorBlock`
+  (`text.go`) and not tried again. At most `maxRenders` (128) renders are
+  kept in memory; when full they are all dropped. **Disk cache** (`rendercache.go`, shared with asgitlog;
   `~/.cache/asgotochanged/renders`, `ASGOTOCHANGED_NO_CACHE` turns it off): a
   finished render is stored gzipped under the sha256 of the renderer's
   fingerprint (binary + configuration), width, mode and an id that here is a
   hash of THE PATCH ITSELF (`patchID`; asgitlog uses the commit), so an edited file
   simply misses and nothing can go stale; a hit returns the highlighted frame
   at once with no partial before it. Only the first ever render of a patch
-  shows the repaint. In memory the key is status, path, width, effective mode
-  and file mtime. Plain git renders are instant: no prefetch, no disk cache.
+  shows the repaint. In memory the key is status, path, width, renderer,
+  effective mode and file mtime. Plain git renders are instant: no prefetch,
+  and the disk cache neither reads nor stores them (`get` and `put` decide
+  that themselves).
 - **Whitespace**: `ctrl+s` turns git's `-w` (`--ignore-all-space`, what
   GitHub's "Hide whitespace" does) on and off for every diff; saved as
   `whitespace` in the state dir. It is a flag of the `git diff` that makes the
@@ -297,7 +343,10 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
 - **Copy**: `ctrl+y` copies the path of the file under the cursor, relative to
   the top as the list shows it (`copyCmd` in the shared `clipboard.go`), and
   the help line confirms it for a moment (`flash.go`); it is listed in the
-  panel only, the help line has no room left. `ASGOTOCHANGED_CLIPBOARD`
+  panel only, the help line has no room left. `nothing to copy` and
+  `copy failed: ...` flash in the error color instead of green
+  (`flashErrMsg`), and so does an option that could not change (`hunk not
+  found`: `flash.fail` in `setOption`). `ASGOTOCHANGED_CLIPBOARD`
   replaces the clipboard command (the tests point it at a stub).
 - **Settings**: the diff mode, the renderer and the whitespace are one file
   each in the state dir (`diff`, `renderer`, `whitespace`; `setting.go`, the
@@ -311,7 +360,8 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   cut the other at the middle, so those go single column (`fileDiff`). An
   explicit mode is obeyed whatever the file.
 - **Editing**: `tea.ExecProcess` hands the terminal to the editor
-  (`ASGOTOCHANGED_OPENER`, else `nvim`, else `$EDITOR`, else `vi`) with the
+  (`ASGOTOCHANGED_OPENER`, a command line split in words by the shared
+  `opener.go`, else `nvim`, else `$EDITOR`, else `vi`) with the
   absolute path, cwd at the top. When it exits the list is loaded again
   (`reloadCmd`): the edit can change a diff, add or remove rows. The cursor
   stays on the same path (`refilter(true)`). A file that does not exist in the
@@ -340,7 +390,9 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
 Unit tests build a real git checkout in a temp dir (local `main` as the base,
 a feature branch with modified, added, deleted, pending and untracked files,
 a path with a space and one with a non-ASCII name) for `loadChanges`, the base
-resolution, the plain-git diff and a cancelled render; the UI tests use
+resolution, the plain-git diff and a cancelled render; `renderqueue_test.go`
+covers the render queue on its own (the window, the bound on pipelines,
+cancelling, partial and failed renders, the memory bound); the UI tests use
 synthetic changes: filtering, the counter, the diff-mode cycle and its
 persistence, editing a deleted file, reload keeping the cursor, the frame
 geometry, clicks.

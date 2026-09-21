@@ -82,7 +82,7 @@ list stays as it is and the cursor does not move.
 | --- | --- |
 | `enter` | open the file in the editor; quitting the editor comes back to the list |
 | `ctrl+t` | diff mode: auto, side by side, single column (remembered) |
-| panel: Diff renderer | render the diffs with hunk or with delta, as in asgitlog (remembered per tool; hunk by default, delta when hunk is not installed). Choosing one that is not installed says `<name> not found` and changes nothing |
+| panel: Diff renderer | render the diffs with hunk or with delta, as in asgitlog (remembered per tool; hunk by default, delta when hunk is not installed). Choosing one that is not installed says `<name> not found`, in red, and changes nothing |
 | `ctrl+s` | show or ignore whitespace changes, like GitHub's "Hide whitespace" (`git diff -w`, remembered); `[-w]` on the diff's bottom edge while it is on |
 | `ctrl+y` | copy the path of the file under the cursor, relative to the repository root as the list shows it; the help line confirms it for a moment |
 | `↑/↓`, `ctrl+p`/`ctrl+n` | move the cursor |
@@ -113,10 +113,14 @@ As a command: `asgotochanged [query]`, where `query` is the initial filter.
 - Auto goes side by side when the diff area is at least 120 columns wide,
   except for added, deleted and untracked files: one half would be empty.
 - hunk draws a diff first and its syntax highlighting a moment later. To keep
-  that repaint off the screen, the files around the cursor are rendered ahead
-  of time and finished renders are kept in `~/.cache/asgotochanged` between runs
+  that repaint off the screen, the next few files in the direction the cursor
+  is moving (and the one behind it) are rendered ahead of time, a few at
+  once, and finished renders are kept in `~/.cache/asgotochanged` between runs
   (`ASGOTOCHANGED_NO_CACHE=1` turns the cache off). You only see the colors come
   in the first time a diff is ever rendered.
+- A diff that cannot be rendered says why in the preview, in red. It is not
+  tried again until the file, the width, the diff mode or the renderer
+  changes.
 - With neither hunk nor delta installed, changing the diff mode says
   `no renderer found: plain git colors`.
 - Outside a git work tree the popup says so and waits for `enter` (from a
