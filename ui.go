@@ -468,10 +468,11 @@ func (m *model) setFlash(s string) tea.Cmd { return m.flash.set(s) }
 
 // ---- editing ----
 
-// editorArgv is the editor command. ASGOTOCHANGED_OPENER replaces it; the
-// default is nvim, what the fzf function opened, then $EDITOR, then vi.
+// editorArgv is the editor command. ASGOTOCHANGED_OPENER replaces it
+// (opener.go); the default is nvim, what the fzf function opened, then
+// $EDITOR, then vi.
 func editorArgv() []string {
-	if f := strings.Fields(os.Getenv("ASGOTOCHANGED_OPENER")); len(f) > 0 {
+	if f := openerArgv("asgotochanged"); len(f) > 0 {
 		return f
 	}
 	if _, err := exec.LookPath("nvim"); err == nil {
