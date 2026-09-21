@@ -727,15 +727,7 @@ func (m model) leftColumn() string {
 	if len(m.rows) > 0 {
 		return m.listVP.View()
 	}
-	msg := "No matches"
-	switch {
-	case m.loadErr != "":
-		msg = m.loadErr
-	case m.ti.Value() != "":
-	default:
-		msg = "No changes vs " + m.ch.base
-	}
-	return stDim.Render(truncate(" "+msg, m.listW()))
+	return emptyList(m.loadErr, m.ti.Value(), "No changes vs "+m.ch.base, m.listW())
 }
 
 // footer is the key help, or a notice or confirmation while one is showing.
