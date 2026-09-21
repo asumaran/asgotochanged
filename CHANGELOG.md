@@ -1,3 +1,8 @@
+## v0.10.1 (2026-09-20)
+
+* refactor(prefs): keep the settings with setting.go (0b19608)
+* test(cache): cover the shared render cache (2ac082f)
+
 ## v0.10.0 (2026-09-20)
 
 * feat(ui): open an options and keys panel with f1 (e9772b0)
