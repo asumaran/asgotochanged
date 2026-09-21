@@ -206,7 +206,7 @@ check("▌D  src/old.ts" in left(f), "the cursor lands on the best match, the de
 f = s.send(ENTER, 0.6)
 check(s.proc.poll() is None and "nothing to edit" in f[-2] and len(edited()) == 1, "a deleted file is not handed to the editor: %r" % f[-2])
 f = s.send(CTRL_T, 0.6)
-check("diff: side-by-side" in f[-2], "ctrl+t cycles the diff mode and says so: %r" % f[-2])
+check("no renderer found: plain git colors" in f[-2] and setting("diff") == "sbs", "ctrl+t cycles the diff mode; with both renderers off it says the diffs are git's own: %r" % f[-2])
 f = s.send(CTRL_S, 0.6)
 check("whitespace: ignored" in f[-2] and "[-w]" in f[-3] and setting("whitespace") == "ignore",
       "ctrl+s ignores the whitespace: said on the help line, marked on the diff's edge and remembered: %r" % f[-3][-30:])
@@ -218,7 +218,7 @@ f = s.send(PANEL, 0.6); dump("panel", f)
 check(len(f) == rows and any("╭─ options " in l for l in f) and any("▌ Diff renderer" in l for l in f) and any("scroll the diff" in l for l in f),
       "f1 lays the options and the keys over the frame, which keeps its size")
 f = s.send(b"zz ", 0.6)   # space on the renderer; here both are turned off
-check("hunk not found" in f[-2], "space on the renderer says there is no other one: %r" % f[-2])
+check("delta not found" in f[-2] and setting("renderer") is None, "space on the renderer says the other one is not installed and saves nothing: %r" % f[-2])
 f = s.send(ESC, 0.5)
 check(s.proc.poll() is None and not any("╭─ options " in l for l in f), "esc closes the panel, not the popup")
 check(prompt(f) == "asgotochanged ❯ old", "the panel took the keys, the filter did not: %r" % prompt(f))

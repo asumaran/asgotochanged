@@ -53,3 +53,37 @@ func TestRenderPatchFeedsDeltaThePatchAndTheWidth(t *testing.T) {
 		t.Errorf("an empty patch renders nothing: %q", empty)
 	}
 }
+
+func TestDiffPrefs(t *testing.T) {
+	p := diffPrefs{tool: toolHunk, mode: diffAuto}
+	opts := p.options()
+	if len(opts) != 3 || opts[0].cur != 1 || opts[0].key != "" || opts[1].key != "^t" || opts[2].key != "^s" || opts[2].cur != 0 {
+		t.Fatalf("options = %+v", opts)
+	}
+	if flash, ok := p.set("renderer", 0, "", "/bin/hunk", 100); ok || flash != "delta not found" || p.tool != toolHunk {
+		t.Errorf("delta asked for and missing: %q %v %q", flash, ok, p.tool)
+	}
+	if flash, ok := p.set("renderer", 1, "/bin/delta", "", 100); ok || flash != "hunk not found" {
+		t.Errorf("hunk asked for and missing: %q %v", flash, ok)
+	}
+	if flash, ok := p.set("renderer", 0, "/bin/delta", "", 100); !ok || flash != "diffs by delta" || p.tool != toolDelta {
+		t.Errorf("delta can be chosen without hunk installed: %q %v %q", flash, ok, p.tool)
+	}
+	if flash, ok := p.set("diff", 1, "/bin/delta", "", 100); !ok || flash != "diff: side-by-side" || p.mode != diffSBS {
+		t.Errorf("diff mode: %q %v %q", flash, ok, p.mode)
+	}
+	// The warning is about the renderer in use, not about delta.
+	q := diffPrefs{tool: toolHunk, mode: diffAuto}
+	if flash, _ := q.set("diff", 2, "", "/bin/hunk", 100); flash != "diff: single column" {
+		t.Errorf("hunk renders fine without delta: %q", flash)
+	}
+	if flash, _ := q.set("diff", 0, "", "", 100); flash != "no renderer found: plain git colors" {
+		t.Errorf("neither renderer: %q", flash)
+	}
+	if flash, ok := q.set("whitespace", 1, "", "", 100); !ok || flash != "whitespace: ignored" || !q.ignoreWS {
+		t.Errorf("whitespace: %q %v", flash, ok)
+	}
+	if _, ok := q.set("layout", 1, "", "", 100); ok {
+		t.Errorf("not a diff option")
+	}
+}

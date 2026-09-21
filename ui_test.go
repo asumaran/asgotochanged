@@ -12,6 +12,9 @@ import (
 
 func stripANSI(s string) string { return ansi.Strip(s) }
 
+// footOf is the line at the foot as the frame draws it.
+func footOf(m model) string { return footLine(m.flash, m.notice, m.help, m.keys, m.width-4) }
+
 func press(m model, keys ...tea.KeyPressMsg) model {
 	for _, k := range keys {
 		next, _ := m.Update(k)
@@ -75,21 +78,25 @@ func TestEnterOnDeletedFileStays(t *testing.T) {
 	if cmd != nil || !strings.Contains(m.notice, "does not exist") {
 		t.Errorf("cmd nil = %v, notice = %q", cmd == nil, m.notice)
 	}
-	if help := ansi.Strip(m.footMsg()); !strings.Contains(help, "nothing to edit") {
+	if help := ansi.Strip(footOf(m)); !strings.Contains(help, "nothing to edit") {
 		t.Errorf("footer = %q", help)
 	}
 }
 
 func TestDiffModeCyclesAndPersists(t *testing.T) {
 	m := fixture(t)
+	if m = press(m, keyCtrlT, keyCtrlT, keyCtrlT); !strings.Contains(ansi.Strip(footOf(m)), "no renderer found: plain git colors") {
+		t.Errorf("with neither renderer the mode changes nothing to see: %q", ansi.Strip(footOf(m)))
+	}
+	m.deltaBin = "/nonexistent/delta"
 	for _, want := range []string{diffSBS, diffSingle, diffAuto} {
 		m = press(m, keyCtrlT)
 		if m.diffMode != want || loadDiffMode() != want {
 			t.Errorf("mode = %q, saved = %q, want %q", m.diffMode, loadDiffMode(), want)
 		}
 	}
-	if !strings.Contains(ansi.Strip(m.footMsg()), "diff: auto") {
-		t.Errorf("footer = %q, want the confirmation", ansi.Strip(m.footMsg()))
+	if !strings.Contains(ansi.Strip(footOf(m)), "diff: auto") {
+		t.Errorf("footer = %q, want the confirmation", ansi.Strip(footOf(m)))
 	}
 }
 
@@ -209,8 +216,9 @@ func TestSelectionNeverWaitsForASlot(t *testing.T) {
 	if cmd := m.updatePreview(); cmd == nil {
 		t.Fatal("the new selection must start rendering at once")
 	}
-	if _, ok := m.inflight[m.prevKey]; !ok || len(m.inflight) != maxPipelines {
-		t.Errorf("inflight = %d, selected running = %v: want one render given up for the selection", len(m.inflight), ok)
+	// The render given up keeps its slot until it reports (it is still dying).
+	if _, ok := m.inflight[m.prevKey]; !ok || len(m.dying) != 1 || len(m.inflight)-len(m.dying) != maxPipelines {
+		t.Errorf("inflight = %d (%d dying), selected running = %v: want one render given up for the selection", len(m.inflight), len(m.dying), ok)
 	}
 }
 
@@ -425,10 +433,15 @@ func TestRendererToggle(t *testing.T) {
 		t.Errorf("again is back on hunk: %+v", m.tool())
 	}
 
+	// With hunk gone delta can still be chosen; going back to hunk cannot.
 	m.hunkBin = ""
 	m = press(m, keySpace)
-	if m.flash.text != "hunk not found" || m.tool().name != toolDelta {
-		t.Errorf("without hunk there is nothing to switch to: flash %q, tool %+v", m.flash.text, m.tool())
+	if m.flash.text != "diffs by delta" || m.tool().name != toolDelta || loadRenderer() != toolDelta {
+		t.Errorf("delta without hunk installed: flash %q, tool %+v", m.flash.text, m.tool())
+	}
+	m = press(m, keySpace)
+	if m.flash.text != "hunk not found" || loadRenderer() != toolDelta {
+		t.Errorf("hunk asked for and missing: flash %q, saved %q", m.flash.text, loadRenderer())
 	}
 }
 
@@ -486,4 +499,82 @@ func TestPanel(t *testing.T) {
 	if !m.panel.open {
 		t.Errorf("f1 opens the panel whatever the filter says")
 	}
+}
+
+// TestPasteFilters: a paste changes the query without a key press, and the
+// list must follow it (toInput). A key that leaves the query alone must not
+// move the cursor off the row it is on.
+func TestPasteFilters(t *testing.T) {
+	m := fixture(t)
+	res, _ := m.Update(tea.PasteMsg{Content: "zzzzqq"})
+	m = res.(model)
+	if m.ti.Value() != "zzzzqq" || len(m.rows) != 0 {
+		t.Fatalf("a paste should filter: query %q, %d rows", m.ti.Value(), len(m.rows))
+	}
+	for range "zzzzqq" {
+		res, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+		m = res.(model)
+	}
+	if len(m.rows) < 2 {
+		t.Skipf("the fixture lists %d rows", len(m.rows))
+	}
+	res, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m = res.(model)
+	if len(m.rows) < 2 {
+		t.Skipf("the query leaves %d rows", len(m.rows))
+	}
+	res, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	m = res.(model)
+	at := m.cursor
+	res, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	m = res.(model)
+	if m.cursor != at {
+		t.Errorf("a key that does not edit the query moved the cursor: %d -> %d", at, m.cursor)
+	}
+	m.panel.open = true
+	res, _ = m.Update(tea.PasteMsg{Content: "xx"})
+	if got := res.(model).ti.Value(); got != "a" {
+		t.Errorf("a paste under the panel should be dropped, the query is %q", got)
+	}
+}
+
+// TestGivenUpRenderIsStartedAgain covers an A, B, A selection: the render of A
+// that was given up keeps its slot and its key until it reports, so a second
+// one cannot be started under the same key and then killed by that late
+// report; and once it has reported, the selection's render starts again
+// instead of the row saying "rendering…" for good.
+func TestGivenUpRenderIsStartedAgain(t *testing.T) {
+	m := hunkFixture(t)
+	m.updatePreview()
+	key := m.prevKey
+	if _, running := m.inflight[key]; !running || key == "" {
+		t.Fatalf("the selection's render should be running: %q %v", key, m.inflight)
+	}
+	for k := range m.inflight { // give every render up, the selection's too
+		m.inflight[k]()
+		m.dying[k] = true
+	}
+	m.updatePreview()
+	if _, held := m.inflight[key]; !held || !m.dying[key] {
+		t.Errorf("a dying render keeps its key until it reports: held=%v dying=%v", held, m.dying[key])
+	}
+	res, _ := m.Update(previewMsg{key: key, cancelled: true})
+	m = res.(model)
+	if _, running := m.inflight[key]; !running || m.dying[key] {
+		t.Errorf("after the late report the selection's render starts again: running=%v dying=%v", running, m.dying[key])
+	}
+}
+
+// TestMain sandboxes the state dir: tests must never touch the real one, even
+// one that forgets to set it.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "asgotochanged-test")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("HERDR_PLUGIN_STATE_DIR", dir)
+	os.Setenv("XDG_CACHE_HOME", dir)
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
 }

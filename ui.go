@@ -155,6 +155,7 @@ type model struct {
 	// inflight is the renders running, by key: the selected file's and the
 	// ones rendered ahead. Each carries the cancel of its context.
 	inflight map[string]context.CancelFunc
+	dying    map[string]bool // given up and still to report: they keep their slot and their key
 }
 
 func newModel(repo repoInfo, ch changes, loadErr, diffMode, hunkBin, query string) model {
@@ -174,6 +175,7 @@ func newModel(repo repoInfo, ch changes, loadErr, diffMode, hunkBin, query strin
 		keys:     defaultKeys(),
 		renders:  map[string]string{},
 		inflight: map[string]context.CancelFunc{},
+		dying:    map[string]bool{},
 		width:    94,
 		height:   24,
 	}
@@ -211,18 +213,14 @@ func (m *model) prevW() int    { return max(10, m.detailsW()-2) }
 func (m *model) bodyH() int { return max(1, m.height-frameRows(true)-1) }
 
 func (m *model) resize() {
-	m.listVP.SetWidth(m.listW())
-	m.listVP.SetHeight(m.bodyH())
-	m.prevVP.SetWidth(m.prevW())
-	m.prevVP.SetHeight(m.bodyH())
+	sizePanes(&m.listVP, &m.prevVP, m.listW(), m.prevW(), m.bodyH())
 	m.help.SetWidth(max(0, m.width-4))
 	sizeInput(&m.ti, m.width-4)
 }
 
 // resizeList moves the divider between the list and the preview by one step.
 func (m *model) resizeList(grow bool) tea.Cmd {
-	m.split = stepSplit(m.split, grow)
-	saveSplit(stateDir(), m.split)
+	m.split = moveSplit(stateDir(), m.split, grow)
 	m.resize()
 	m.renderList()
 	return m.updatePreview()
@@ -256,7 +254,7 @@ func (m *model) refilter(keep bool) {
 		path = f.path
 	}
 	m.applyFilter()
-	if keep || m.ti.Value() == "" {
+	if keep || !hasTerms(m.ti.Value()) {
 		m.keepCursorOn(path)
 	}
 }
@@ -326,10 +324,18 @@ func (m *model) updatePreview() tea.Cmd {
 	mode := fileDiff(m.diffMode, m.prevW(), *f)
 	key := previewKey(m.repo.Top, *f, m.prevW(), mode, m.tool())
 	if key == m.prevKey {
-		return m.prefetch()
+		_, done := m.renders[key]
+		_, running := m.inflight[key]
+		if done || running {
+			return m.prefetch()
+		}
+		// Its render was given up (an A, B, A selection) and has now reported:
+		// start it again, or the row would say "rendering…" for good.
+	}
+	if key != m.prevKey {
+		m.prevVP.GotoTop()
 	}
 	m.prevKey = key
-	m.prevVP.GotoTop()
 	if c, ok := m.renders[key]; ok {
 		m.prevVP.SetContent(c)
 		return m.prefetch()
@@ -352,42 +358,33 @@ func (m *model) tool() diffTool {
 
 // options is what the panel offers, as things stand. The renderer is chosen
 // there and nowhere else; the diff mode and the whitespace keep their keys.
-func (m *model) options() []option {
-	cur := func(on bool) int {
-		if on {
-			return 1
-		}
-		return 0
-	}
-	diff := map[string]int{diffAuto: 0, diffSBS: 1, diffSingle: 2}
-	return []option{
-		{id: "renderer", label: "Diff renderer", values: []string{toolDelta, toolHunk}, cur: cur(m.toolPref == toolHunk)},
-		{id: "diff", label: "Diff mode", values: []string{"auto", "side-by-side", "single column"}, cur: diff[m.diffMode], key: "^t"},
-		{id: "whitespace", label: "Whitespace", values: []string{"show", "ignore"}, cur: cur(m.ignoreWS), key: "^s"},
-	}
+func (m *model) options() []option { return m.diffPrefs().options() }
+
+func (m *model) diffPrefs() diffPrefs {
+	return diffPrefs{tool: m.toolPref, mode: m.diffMode, ignoreWS: m.ignoreWS}
 }
 
 // setOption changes a setting, remembers it and says so. The keys and the
 // panel both come through here.
 func (m *model) setOption(id string, v int) tea.Cmd {
-	switch id {
-	case "renderer":
-		if m.hunkBin == "" {
-			return m.setFlash("hunk not found")
+	p := m.diffPrefs()
+	flash, changed := p.set(id, v, m.deltaBin, m.hunkBin, m.prevW())
+	if !changed {
+		if flash == "" {
+			return nil
 		}
-		m.toolPref = []string{toolDelta, toolHunk}[v]
-		saveRenderer(m.toolPref)
-		return tea.Batch(m.updatePreview(), m.setFlash("diffs by "+m.toolPref))
-	case "diff":
-		m.diffMode = []string{diffAuto, diffSBS, diffSingle}[v]
-		saveDiffMode(m.diffMode)
-		return tea.Batch(m.setFlash("diff: "+diffLabel(m.diffMode, m.prevW())), m.updatePreview())
-	case "whitespace":
-		m.ignoreWS = v == 1
-		saveIgnoreWS(m.ignoreWS)
-		return tea.Batch(m.setFlash("whitespace: "+wsLabel(m.ignoreWS)), m.updatePreview())
+		return m.setFlash(flash)
 	}
-	return nil
+	m.toolPref, m.diffMode, m.ignoreWS = p.tool, p.mode, p.ignoreWS
+	switch id { // only what changed is written: a setting never chosen stays unset
+	case "renderer":
+		saveRenderer(m.toolPref)
+	case "diff":
+		saveDiffMode(m.diffMode)
+	case "whitespace":
+		saveIgnoreWS(m.ignoreWS)
+	}
+	return tea.Batch(m.setFlash(flash), m.updatePreview())
 }
 
 func (m *model) startRender(f changedFile, key, mode string) tea.Cmd {
@@ -446,6 +443,9 @@ func (m *model) cancelFarthest() {
 	}
 	victim, worst := "", -1
 	for key := range m.inflight {
+		if m.dying[key] {
+			continue
+		}
 		rank, ok := keep[key]
 		if !ok {
 			victim = key
@@ -456,8 +456,11 @@ func (m *model) cancelFarthest() {
 		}
 	}
 	if cancel := m.inflight[victim]; cancel != nil {
+		// It stays in inflight until it reports, as in asgitlog: the process
+		// is still dying and holds its slot, and the same key started again
+		// now would be killed by the late report of this one.
 		cancel()
-		delete(m.inflight, victim)
+		m.dying[victim] = true
 	}
 }
 
@@ -507,9 +510,10 @@ func reloadCmd() tea.Cmd {
 
 // ---- bubbletea ----
 
-func (m model) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, m.updatePreview())
-}
+// Init starts no preview: the size is not known yet, and a render at a made-up
+// width is one nobody sees that holds a slot. The first tea.WindowSizeMsg
+// starts it, as in asgitlog.
+func (m model) Init() tea.Cmd { return textinput.Blink }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -524,6 +528,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cancel := m.inflight[msg.key]; cancel != nil {
 				cancel()
 				delete(m.inflight, msg.key)
+				delete(m.dying, msg.key)
 			}
 		}
 		if msg.cancelled {
@@ -590,10 +595,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.handleClick(msg)
 
+	case tea.PasteMsg:
+		if m.panel.open {
+			return m, nil // nothing is typed under the panel
+		}
+		return m.toInput(msg)
+
 	default:
-		var cmd tea.Cmd
-		m.ti, cmd = m.ti.Update(msg)
-		return m, cmd
+		// Whatever else the input takes (its own paste, the cursor's blink).
+		return m.toInput(msg)
 	}
 }
 
@@ -643,13 +653,20 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	before := m.ti.Value()
-	var cmd tea.Cmd
-	m.ti, cmd = m.ti.Update(msg)
-	if m.ti.Value() != before {
-		m.refilter(false)
-		m.renderList()
+	return m.toInput(msg)
+}
+
+// toInput hands a message to the filter input and, when that changed the
+// query, filters again: a key, a paste from the terminal (tea.PasteMsg) or the
+// input's own ctrl+v all come through here, so the list never lags behind
+// what the input shows. A message that leaves the query alone moves nothing.
+func (m model) toInput(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd, changed := typeInto(&m.ti, msg)
+	if !changed {
+		return m, cmd
 	}
+	m.refilter(false)
+	m.renderList()
 	return m, tea.Batch(cmd, m.updatePreview())
 }
 
@@ -673,12 +690,7 @@ func (m model) handleClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 	return m, m.updatePreview()
 }
 
-func (m model) View() tea.View {
-	v := tea.NewView(m.render())
-	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
-	return v
-}
+func (m model) View() tea.View { return popupView(m.render(), true) }
 
 // render stacks the sections in one frame (see frame.go). The context line is
 // the one thing the rest of the screen cannot say: which checkout and branch.
@@ -687,7 +699,7 @@ func (m model) render() string {
 	out := frameHead(w, stInfo.Render(m.repo.line(max(0, w-4))), withDevMark(m.status()), m.ti.View())
 	out = append(out, splitMain(m.listLines(), strings.Split(m.prevVP.View(), "\n"),
 		m.listW(), m.detailsW(), m.counter(), diffEdge(m.ignoreWS, scrollPos(&m.prevVP)))...)
-	out = append(out, framed(w, m.footLine()), hline(w, "╰", "╯", "", ""))
+	out = append(out, framed(w, footLine(m.flash, m.notice, m.help, m.keys, w-4)), hline(w, "╰", "╯", "", ""))
 	if m.panel.open {
 		keys := keyLines(m.help, m.keys, w-10)
 		out = overlay(out, panelLines(m.options(), m.panel.cursor, keys, w-4, len(out)-2), w)
@@ -710,17 +722,7 @@ func (m model) status() string {
 }
 
 // listLines is the list as exactly bodyH lines of listW cells.
-func (m model) listLines() []string {
-	lines := strings.Split(m.leftColumn(), "\n")
-	for len(lines) < m.bodyH() {
-		lines = append(lines, "")
-	}
-	lines = lines[:m.bodyH()]
-	for i, l := range lines {
-		lines[i] = fit(l, m.listW())
-	}
-	return lines
-}
+func (m model) listLines() []string { return fitLines(m.leftColumn(), m.bodyH(), m.listW()) }
 
 // leftColumn is the list, or the reason there is nothing to list.
 func (m model) leftColumn() string {
@@ -728,23 +730,4 @@ func (m model) leftColumn() string {
 		return m.listVP.View()
 	}
 	return emptyList(m.loadErr, m.ti.Value(), "No changes vs "+m.ch.base, m.listW())
-}
-
-// footer is the key help, or a notice or confirmation while one is showing.
-// footMsg is what takes the help's place while there is something to say.
-func (m model) footMsg() string {
-	switch {
-	case m.notice != "":
-		return stError.Render(truncate(m.notice, max(0, m.width-4)))
-	case m.flash.text != "":
-		return m.flash.view(m.width - 4)
-	}
-	return ""
-}
-
-func (m model) footLine() string {
-	if msg := m.footMsg(); msg != "" {
-		return msg
-	}
-	return helpLine(m.help, m.keys, m.width-4)
 }

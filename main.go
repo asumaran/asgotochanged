@@ -42,7 +42,7 @@ func main() {
 
 	enterPaneCwd()
 	if !insideWorkTree() {
-		fatal("not inside a git work tree: " + cwd())
+		fatal("asgotochanged", "not inside a git work tree: "+cwd())
 	}
 
 	start := time.Now()
@@ -72,17 +72,6 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-}
-
-// fatal reports why there is nothing to show. In a popup the pane closes the
-// instant the process exits, so the message is held until a key is pressed.
-func fatal(msg string) {
-	fmt.Fprintln(os.Stderr, "asgotochanged:", msg)
-	if os.Getenv("HERDR_PLUGIN_ENTRYPOINT_ID") != "" {
-		fmt.Fprint(os.Stderr, "press enter to close…")
-		_, _ = fmt.Scanln()
-	}
-	os.Exit(1)
 }
 
 func cwd() string {
@@ -122,13 +111,6 @@ func saveIgnoreWS(ignore bool) {
 		value = "ignore"
 	}
 	saveSetting(stateDir(), "whitespace", value)
-}
-
-func wsLabel(ignore bool) string {
-	if ignore {
-		return "ignored"
-	}
-	return "shown"
 }
 
 // runDump prints what the popup would list, without a TTY. With -query it

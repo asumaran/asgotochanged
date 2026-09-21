@@ -1,16 +1,18 @@
 package main
 
 // Diff preview for the right-hand column: the file's diff since the merge
-// base, rendered by hunk like asgitlog does (split or unified, by the diff
-// mode and the width; see hunk.go) or, without hunk, by git's own colors.
+// base, rendered by hunk or delta like asgitlog does (difftool.go; split or
+// unified, by the diff mode and the width) or, with neither, by git's own
+// colors.
 // Rendering runs as a tea.Cmd under a context the model cancels when the
 // selection moves on: a hunk render takes a few hundred milliseconds and
 // walking the list would pile them up. hunk paints first and highlights
 // later, so a render reports a partial frame and then the final one; to keep
 // that repaint off the screen the model renders the rows around the cursor
 // ahead of time, and the finished renders are kept on disk between runs (see
-// cache.go). In memory they are cached per (path, width, mode, mtime), so an
-// edited file re-renders on its own.
+// rendercache.go). In memory they are cached per previewKey (status, path,
+// width, renderer, mode with -w, mtime), so an edited file re-renders on its
+// own.
 
 import (
 	"context"

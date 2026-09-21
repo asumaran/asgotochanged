@@ -91,3 +91,69 @@ func renderPatch(ctx context.Context, tool diffTool, patch []byte, width int, sb
 	delta.Stdin = bytes.NewReader(patch)
 	return limitedOutput(delta, false)
 }
+
+// diffPrefs is what both diff tools let the panel change about the diffs.
+// Each tool keeps the values where it always did and persists them itself;
+// the options, what each value means and what is said about a change are
+// here, so the two cannot drift.
+type diffPrefs struct {
+	tool     string // toolDelta | toolHunk
+	mode     string // diffAuto | diffSBS | diffSingle
+	ignoreWS bool
+}
+
+var (
+	rendererValues = []string{toolDelta, toolHunk}
+	diffModeValues = []string{diffAuto, diffSBS, diffSingle}
+)
+
+// options lists them for the panel: the renderer has no key of its own, the
+// mode and the whitespace keep theirs.
+func (p diffPrefs) options() []option {
+	at := func(values []string, v string) int {
+		for i, x := range values {
+			if x == v {
+				return i
+			}
+		}
+		return 0
+	}
+	ws := 0
+	if p.ignoreWS {
+		ws = 1
+	}
+	return []option{
+		{id: "renderer", label: "Diff renderer", values: rendererValues, cur: at(rendererValues, p.tool)},
+		{id: "diff", label: "Diff mode", values: []string{"auto", "side-by-side", "single column"}, cur: at(diffModeValues, p.mode), key: "^t"},
+		{id: "whitespace", label: "Whitespace", values: []string{"show", "ignore"}, cur: ws, key: "^s"},
+	}
+}
+
+// set applies value v of the option id and returns what to say about it.
+// changed is false when id is not one of these options or when the renderer
+// asked for is not installed (the flash says which). width is the diff
+// area's, for the label of the auto mode.
+func (p *diffPrefs) set(id string, v int, deltaBin, hunkBin string, width int) (flash string, changed bool) {
+	switch id {
+	case "renderer":
+		want := rendererValues[max(0, min(v, len(rendererValues)-1))]
+		if want == toolHunk && hunkBin == "" || want == toolDelta && deltaBin == "" {
+			return want + " not found", false
+		}
+		p.tool = want
+		return "diffs by " + want, true
+	case "diff":
+		p.mode = diffModeValues[max(0, min(v, len(diffModeValues)-1))]
+		if pickTool(p.tool, deltaBin, hunkBin, p.ignoreWS).plain() {
+			return "no renderer found: plain git colors", true
+		}
+		return "diff: " + diffLabel(p.mode, width), true
+	case "whitespace":
+		p.ignoreWS = v == 1
+		if p.ignoreWS {
+			return "whitespace: ignored", true
+		}
+		return "whitespace: shown", true
+	}
+	return "", false
+}

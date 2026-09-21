@@ -1,11 +1,9 @@
 package main
 
-// Fuzzy filtering. Rows keep their path order while filtering (the list reads
-// like the tree, not like a ranking); the score only decides where the cursor
-// lands. Matched positions are byte offsets into the path, as sahilm/fuzzy
-// reports them.
-
-import ()
+// Fuzzy filtering. Without a query the rows keep their path order; with
+// one the list is a search result, best match first (rank.go), and the cursor
+// starts on it. Matched positions are byte offsets into the displayed text, as
+// match.go reports them.
 
 // fileRow is one changed file in the list.
 type fileRow struct {
@@ -18,7 +16,7 @@ type fileRow struct {
 // match half the list.
 func filterFiles(files []changedFile, q string) []fileRow {
 	rows := make([]fileRow, 0, len(files))
-	if q == "" {
+	if !hasTerms(q) {
 		for _, f := range files {
 			rows = append(rows, fileRow{f: f})
 		}
