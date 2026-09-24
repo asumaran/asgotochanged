@@ -1,6 +1,6 @@
 package main
 
-// Everything that asks git: the repository summary for the context line, the
+// Everything that asks git: the repository summary for the foot, the
 // base the branch is compared against, and the files it changed. One diff
 // from the merge base to the working tree covers committed, staged and
 // unstaged changes; untracked files are appended as "?". It is what a PR

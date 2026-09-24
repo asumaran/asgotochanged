@@ -1,7 +1,7 @@
 package main
 
-// The repository summary of the context line: which checkout and branch the
-// list is about.
+// The repository summary at the foot of the frame: which checkout and branch
+// the list is about.
 //
 // This file is the same in every tool of the family that lists a repository.
 
@@ -46,14 +46,18 @@ func (ri repoInfo) String() string { return ri.line(0) }
 
 // line is the summary fitted into width (0 = as long as it is). The branch
 // and its upstream are what change from one popup to the next, so a checkout
-// path that does not fit loses its head, not the branch its place.
+// path that does not fit loses its head, not the branch its place; with no
+// room for a readable tail the path goes and the branch stays.
 func (ri repoInfo) line(width int) string {
 	branch := ri.Branch
 	if ri.Upstream != "" {
 		branch += " -> " + ri.Upstream + " (ahead " + strconv.Itoa(ri.Ahead) + ", behind " + strconv.Itoa(ri.Behind) + ")"
 	}
 	top := homeRel(ri.Top)
-	if room := width - 2 - len([]rune(branch)); width > 0 && len([]rune(top)) > room && room > 8 {
+	if room := width - 2 - len([]rune(branch)); width > 0 && len([]rune(top)) > room {
+		if room <= 8 {
+			return branch
+		}
 		r := []rune(top)
 		top = "…" + string(r[len(r)-(room-1):])
 	}

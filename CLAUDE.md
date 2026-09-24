@@ -35,8 +35,8 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
   (`fatal` outside one), the saved diff settings, `tea.NewProgram`, `runDump`
   (it writes to an `io.Writer`, so the tests read what `-dump` prints).
 - `git.go`: `resolveBase`, `loadChanges` (name-status + untracked + numstat,
-  all NUL-separated), `diffArgs`. The repository summary of the context line
-  is in `repoinfo.go`.
+  all NUL-separated), `diffArgs`. The repository summary of the foot is in
+  `repoinfo.go`.
 - `filter.go`: fuzzy rows over the paths.
 - `match.go`: `findTight`/`tighten`, the fuzzy matcher with one correction: it
   is greedy (first candidate for each rune, left to right), so a query that
@@ -67,10 +67,12 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
   changed: a key, a terminal paste and the input's own `ctrl+v` all edit it,
   and the caller filters again only when it did. The same file in every tool
   of the family.
-- `helpfoot.go`: the help line at the foot, cut to the width, and the key that
-  opens the panel. `footLine` is what the foot shows: a flash first, then a
-  notice in the error color, else the help. The same file in every tool of the
-  family.
+- `helpfoot.go`: the line at the foot and the key that opens the panel.
+  `footLine` is what the foot shows: a flash first, then a notice in the error
+  color, else the help cut to the width; with a context (`info`, styled with
+  `stInfo` and fitted to `footRoom`) the flash, the notice or the context on
+  the left and the panel's key alone on the right (`panelHint`, taken from
+  the tool's own `ShortHelp`). The same file in every tool of the family.
 - `panel.go`: the panel `f1` opens over the frame: options to change in
   place and every key under them (`option`, `panel`, `panelLines`,
   `overlay`). The same file in every tool of the family.
@@ -84,7 +86,7 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
   `selPad` and the `stSel`/`stMatch` styles: how a match and the selected row
   look. The same file in every tool of the family.
 - `flash.go`: `flash`, `flashMsg`, `flashErrMsg`, `clearFlashMsg`: a word that
-  takes the help line for a moment: a confirmation in green (`flash.set`), or
+  takes the foot for a moment: a confirmation in green (`flash.set`), or
   a key that could do nothing (`nothing to copy`) in the error color
   (`flash.fail`). The same file in every tool of the family.
 - `clipboard.go`: `copyCmd`: feeds a text to the system clipboard and reports
@@ -131,7 +133,7 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
   that opens something.
 - `frame.go`: the single-frame layout the pickers share: `frameHead`,
   `splitMain` (list and preview) and the section rows (`mainY`, `listY`,
-  `frameRows`, each with or without the optional context line), drawn with the
+  `frameRows`), drawn with the
   primitives of `border.go`. Copied, not imported: the same file ships in
   asgoto, asgotopr, asgotoissues, asgotonotes and asgotosession (all under
   github.com/asumaran), and there is no shared library. A pull request only
@@ -164,9 +166,9 @@ paths (the `github.com/charmbracelet/<name>/v2` spelling is rejected by
   ahead of time: 4 ahead in the direction of travel plus the one behind. The
   same file in every tool of the family that renders diffs.
 - `repoinfo.go`: `repoInfo`, `loadRepoInfo`, `repoInfo.line`: the repository
-  summary of the context line (checkout, branch, upstream, ahead and behind),
-  fitted to the width: a checkout path that does not fit loses its head, never
-  the branch. The same file in every tool of the family that lists a
+  summary at the foot (checkout, branch, upstream, ahead and behind), fitted
+  to the width: a checkout path that does not fit loses its head, never the
+  branch, and goes when no readable tail fits. The same file in every tool of the family that lists a
   repository.
 - `difftool.go`: what draws a diff: hunk or delta, or git's own colors when
   neither is installed (`diffTool`, `toolBin`, `pickTool`, `renderPatch`).
@@ -202,16 +204,17 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
 ## Behaviour / decisions
 
 - **Layout**: one rounded frame of sections split by shared edges, the layout
-  asgitlog introduced and every picker of the family follows (`frame.go`). A
-  context line on top is only for what the rest of the screen cannot say; here
-  it is justified, as in asgitlog: which checkout and branch the list is
-  about. A checkout path that does not fit loses its head so the branch keeps
-  its place (`repoInfo.line` in `repoinfo.go`, the same file asgitlog ships).
-  The edge under it carries, in brackets, the base
-  (`[vs origin/main]`, asgitlog's scope). The main section is list and diff
-  split by a divider; its bottom edge carries the matches/total counter under
-  the list and, while the diff overflows, its scroll position on the right. Errors and confirmations take
-  the help line. The list starts on screen row `listY(true)`, one cell in from
+  asgitlog introduced and every picker of the family follows (`frame.go`).
+  The top border carries, in brackets, the base (`[vs origin/main]`,
+  asgitlog's scope). The main section is list and diff split by a divider;
+  its bottom edge carries the matches/total counter under the list and, while
+  the diff overflows, its scroll position on the right. The foot carries the
+  context, the one thing the rest of the screen cannot say (here, as in
+  asgitlog: which checkout and branch the list is about), and the panel's key
+  at its right end; the actions are in the panel. A checkout path that does
+  not fit loses its head so the branch keeps its place (`repoInfo.line` in
+  `repoinfo.go`, the same file asgitlog ships). Errors and confirmations take
+  the context's place. The list starts on screen row `listY`, one cell in from
   the left side, which is what the click-to-row math uses.
 - **Moving through the list** is the same in every tool of the family and
   comes from `listnav.go` (the same file in each repo): arrows or
@@ -234,16 +237,18 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   move, the blink) never moves the cursor. A paste under the open panel is
   dropped. A query made only of spaces, or a bare `~` or `'`, is not a query
   (`hasTerms`): it does not filter, rank or move the cursor.
-- **Help and options**: the line at the foot shows the tool's own actions,
-  the panel's key and the quit keys (`helpfoot.go`). `f1` opens the panel (`panel.go`, the same file in
+- **Help and options**: the line at the foot shows the context (checkout and
+  branch) and, at its right end, the panel's key alone (`helpfoot.go`); the
+  tool's own actions are in the panel. `f1` opens the panel (`panel.go`, the same file in
   every tool of the family): the options on top, to change with `←`/`→` or
   `space`, and every key in columns under them, laid out by bubbles' `help`
   from `FullHelp()`. The panel is spliced over the middle of the frame, which
   keeps its size; while it is open it takes every key and the mouse, and `esc`
   closes it before it does anything else. `?` is not a help key: the filter
-  has the focus, so it is text. Moving, scrolling and resizing are listed in
-  the panel only, so the help line stays short enough for a narrow popup. A
-  message takes the help line's place (`footLine`): a flash for a moment (a
+  has the focus, so it is text. `ShortHelp()` still lists the tool's own
+  actions, the panel's key and the quit keys: the foot takes the panel's key
+  from it, and a tool without context shows it whole. A
+  message takes the context's place (`footLine`): a flash for a moment (a
   confirmation in green, a key that could do nothing in the error color),
   else an error or a notice in the error color.
   This tool's options are the renderer, the diff mode and the whitespace: `options()` lists them as things stand and
@@ -278,7 +283,7 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   exit 1 in a shell. No base or no merge base is a load error: it is shown in
   the list in the error color (`loadErr` through the shared `emptyList`), as
   in every tool of the family. Notices (a deleted file, an editor that failed)
-  take the help line in the error color until the next key (`footLine`).
+  take the foot in the error color until the next key (`footLine`).
 - **cwd**: herdr starts plugin panes in the plugin's own directory and
   describes the invocation in `HERDR_PLUGIN_CONTEXT_JSON`; `enterPaneCwd`
   moves to `focused_pane_cwd` (else `workspace_cwd`). git runs with `-C
@@ -342,8 +347,8 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   list, which `-w` does not change.
 - **Copy**: `ctrl+y` copies the path of the file under the cursor, relative to
   the top as the list shows it (`copyCmd` in the shared `clipboard.go`), and
-  the help line confirms it for a moment (`flash.go`); it is listed in the
-  panel only, the help line has no room left. `nothing to copy` and
+  the foot confirms it for a moment (`flash.go`); it is listed in the panel
+  only. `nothing to copy` and
   `copy failed: ...` flash in the error color instead of green
   (`flashErrMsg`), and so does an option that could not change (`hunk not
   found`: `flash.fail` in `setOption`). `ASGOTOCHANGED_CLIPBOARD`
@@ -365,7 +370,7 @@ Keybinding (user config): `prefix+m` / `ctrl+alt+m` → `plugin_action`
   absolute path, cwd at the top. When it exits the list is loaded again
   (`reloadCmd`): the edit can change a diff, add or remove rows. The cursor
   stays on the same path (`refilter(true)`). A file that does not exist in the
-  work tree (deleted) is never handed over: notice on the help line.
+  work tree (deleted) is never handed over: notice at the foot.
 - **A query makes the list a search result**: rows are ranked, best match
   first, and the cursor sits on the first one (`rank` in `rank.go`, the same
   file in every picker of the family). Equal scores keep the list's own

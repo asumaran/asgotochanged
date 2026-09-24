@@ -1,8 +1,8 @@
 package main
 
-// The bubbletea model: one frame (see frame.go) holding the context line
-// (which checkout and branch), the filter input, the changed files next to
-// the diff of the one under the cursor, and the help. Modeled on asgitlog and
+// The bubbletea model: one frame (see frame.go) holding the filter input,
+// the changed files next to the diff of the one under the cursor, and the
+// foot (which checkout and branch, and the panel's key). Modeled on asgitlog and
 // the asgoto pickers: the input is focused before the program starts and every
 // printable key filters. Enter hands the terminal to the editor and comes
 // back to the list, like the fzf function this replaces.
@@ -30,7 +30,6 @@ var (
 	stDim   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	stTitle = lipgloss.NewStyle().Bold(true)
 	stError = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
-	stInfo  = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 	stScope = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 	stCount = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 
@@ -204,8 +203,8 @@ func (m *model) detailsW() int { _, w := splitWidths(m.innerW(), m.split); retur
 func (m *model) prevW() int    { return max(10, m.detailsW()-2) }
 
 // bodyH is the height of the main section: everything but the frame's own
-// lines (with the context line) and the help line.
-func (m *model) bodyH() int { return max(1, m.height-frameRows(true)-1) }
+// lines and the foot.
+func (m *model) bodyH() int { return max(1, m.height-frameRows-1) }
 
 func (m *model) resize() {
 	sizePanes(&m.listVP, &m.prevVP, m.listW(), m.prevW(), m.bodyH())
@@ -623,7 +622,7 @@ func (m model) toInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // overList reports whether a screen cell is inside the list.
 func (m *model) overList(x, y int) bool {
-	return inList(x, y, listY(true), m.listW(), m.bodyH())
+	return inList(x, y, listY, m.listW(), m.bodyH())
 }
 
 // handleClick moves the cursor to the row under a left click on the list. It
@@ -632,7 +631,7 @@ func (m model) handleClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 	if msg.Button != tea.MouseLeft || !m.overList(msg.X, msg.Y) {
 		return m, nil
 	}
-	i, ok := rowUnder(msg.Y, listY(true), m.listVP.YOffset(), len(m.rows))
+	i, ok := rowUnder(msg.Y, listY, m.listVP.YOffset(), len(m.rows))
 	if !ok || i == m.cursor {
 		return m, nil
 	}
@@ -643,19 +642,25 @@ func (m model) handleClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 
 func (m model) View() tea.View { return popupView(m.render(), true) }
 
-// render stacks the sections in one frame (see frame.go). The context line is
+// render stacks the sections in one frame (see frame.go). The foot carries
 // the one thing the rest of the screen cannot say: which checkout and branch.
 func (m model) render() string {
 	w := m.width
-	out := frameHead(w, stInfo.Render(m.repo.line(max(0, w-4))), withDevMark(m.status()), m.ti.View())
+	out := frameHead(w, withDevMark(m.status()), m.ti.View())
 	out = append(out, splitMain(m.listLines(), strings.Split(m.prevVP.View(), "\n"),
 		m.listW(), m.detailsW(), m.counter(), diffEdge(m.ignoreWS, scrollPos(&m.prevVP)))...)
-	out = append(out, framed(w, footLine(m.flash, m.notice, m.help, m.keys, w-4)), hline(w, "╰", "╯", "", ""))
+	out = append(out, framed(w, footLine(m.flash, m.notice, m.context(), m.help, m.keys, w-4)), hline(w, "╰", "╯", "", ""))
 	if m.panel.open {
 		keys := keyLines(m.help, m.keys, w-10)
 		out = overlay(out, panelLines(m.options(), m.panel.cursor, keys, w-4, len(out)-2), w)
 	}
 	return strings.Join(out, "\n")
+}
+
+// context is the repository summary for the foot, fitted to the room the
+// panel's key leaves.
+func (m model) context() string {
+	return stInfo.Render(m.repo.line(footRoom(m.help, m.keys, m.width-4)))
 }
 
 // counter is the matches/total count, for the edge under the list.

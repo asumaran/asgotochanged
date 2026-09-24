@@ -159,33 +159,34 @@ def edited():
 def copied():
     return open(clip_log).read() if os.path.exists(clip_log) else None
 
-# One frame (see frame.go): border, context, counter edge, input, main edge,
-# list | preview, bottom edge, help, border.
+# One frame (see frame.go): top border (with the base), input, main edge,
+# list | preview, bottom edge, foot (context and the panel key), border.
 def listw(): return max(COLS - 3 - (COLS - 2) * 75 // 100, 10)   # the default split: list 25%, preview 75%
-def divider(f): return f[5].index("│", 1)
-def left(f):  return [l[1:1 + listw()].rstrip() for l in f[5:-3] if l[1:1 + listw()].strip()]
-def right(f): return "\n".join(l[listw() + 3:-1].rstrip() for l in f[5:-3])
+def divider(f): return f[3].index("│", 1)
+def left(f):  return [l[1:1 + listw()].rstrip() for l in f[3:-3] if l[1:1 + listw()].strip()]
+def right(f): return "\n".join(l[listw() + 3:-1].rstrip() for l in f[3:-3])
 # The input line: the prompt and what is typed (or the placeholder). A build
 # that is not a release says "(dev)" at the end of the edge over the
 # input; devmark() says so.
-def prompt(f): return f[3].strip("│ ").rstrip().removesuffix("(dev)").rstrip()
-def devmark(f): return any(l.rstrip("╮┤─ ").endswith("(dev)") for l in f[:4])
+def prompt(f): return f[1].strip("│ ").rstrip().removesuffix("(dev)").rstrip()
+def devmark(f): return any(l.rstrip("╮┤─ ").endswith("(dev)") for l in f[:2])
 def counter(f):
     for l in f:
         m = re.match(r"├─+ (\d+/\d+) ─[┴┤]", l)
         if m: return m.group(1)
     return ""
-def status(f): return f[2].strip("├┤─ ").removesuffix("(dev)").rstrip()
+def status(f): return f[0].strip("╭╮─ ").removesuffix("(dev)").rstrip()
+def foot(f): return f[-2].strip("│ ").rstrip()
 
 print("== asgotochanged pty driver (%dx%d) ==" % (COLS, ROWS))
 
 # ---------- run 1: list, context, diff, filter, edit and come back ----------
 s = session()
 f = s.start("asgotochanged ❯"); dump("open", f)
-check(prompt(f) == "asgotochanged ❯ Search by path…", "prompt line is clean: %r" % f[3])
+check(prompt(f) == "asgotochanged ❯ Search by path…", "prompt line is clean: %r" % f[1])
 check(devmark(f), "a dev build says so on the edge over the input")
 check(b"\x1b[?1049h" in s.raw, "program entered the alt screen")
-check("~/wt/shop/fix-cart-total  fix/cart-total" in f[1], "the context line names the checkout and the branch: %r" % f[1])
+check(foot(f).startswith("~/wt/shop/fix-cart-total  fix/cart-total") and foot(f).endswith("f1 options"), "the foot names the checkout and the branch, and the panel key at its right end: %r" % foot(f))
 check(counter(f) == "4/4" and status(f) == "[vs main]", "counter under the list %r, base on the edge over the input %r" % (counter(f), status(f)))
 rows = left(f)
 check(rows == ["▌?  notes/PLAN.md", " D  src/old.ts", " A  src/tax.ts", " M  src/total.ts"], "changed files by path, with their status: %r" % rows)
@@ -196,7 +197,7 @@ check("-export const total = (items) => items.length" in right(f) and "+export c
       "the diff is against the merge base")
 f = s.send(ENTER, 1.2); dump("after the editor", f)
 check(edited() == [os.path.join(repo, "src", "total.ts")], "enter hands the file to the editor: %r" % edited())
-check(s.proc.poll() is None and prompt(f) == "asgotochanged ❯ total", "quitting the editor comes back to the list: %r" % f[3])
+check(s.proc.poll() is None and prompt(f) == "asgotochanged ❯ total", "quitting the editor comes back to the list: %r" % f[1])
 check("+// edited" in right(f), "the diff is rendered again after the edit")
 
 # a deleted file has nothing to edit
@@ -209,10 +210,11 @@ f = s.send(CTRL_T, 0.6)
 check("no renderer found: plain git colors" in f[-2] and setting("diff") == "sbs", "ctrl+t cycles the diff mode; with both renderers off it says the diffs are git's own: %r" % f[-2])
 f = s.send(CTRL_S, 0.6)
 check("whitespace: ignored" in f[-2] and "[-w]" in f[-3] and setting("whitespace") == "ignore",
-      "ctrl+s ignores the whitespace: said on the help line, marked on the diff's edge and remembered: %r" % f[-3][-30:])
+      "ctrl+s ignores the whitespace: said at the foot, marked on the diff's edge and remembered: %r" % f[-3][-30:])
 f = s.send(CTRL_S, 0.6)
 check("whitespace: shown" in f[-2] and "[-w]" not in f[-3] and setting("whitespace") == "show", "ctrl+s again shows it: %r" % f[-2])
-s.pump(2.2)   # the flash gives the help line back
+s.pump(2.2); s.repaint(); f = s.frame()   # the flash gives the context back
+check(foot(f).startswith("~/wt/shop/fix-cart-total") and foot(f).endswith("f1 options"), "the context and the panel key are back after the flash: %r" % foot(f))
 rows = len(f)
 f = s.send(PANEL, 0.6); dump("panel", f)
 check(len(f) == rows and any("╭─ options " in l for l in f) and any("▌ Diff renderer" in l for l in f) and any("scroll the diff" in l for l in f),
@@ -232,15 +234,15 @@ s = session(args=("tax",))
 f = s.start("asgotochanged ❯")
 check(prompt(f) == "asgotochanged ❯ tax" and left(f) == ["▌A  src/tax.ts"], "a positional argument is the initial filter: %r" % left(f))
 for _ in range(3): s.send(b"\x7f", 0.1)
-f = s.send(b"\x1b[<0;5;8M\x1b[<0;5;8m", 0.6)   # SGR press+release on the third list line
+f = s.send(b"\x1b[<0;5;6M\x1b[<0;5;6m", 0.6)   # SGR press+release on the third list line
 check(left(f)[2].startswith("▌A  src/tax.ts") and edited() == [], "a click selects the row and opens nothing: %r" % left(f))
-f = s.send(b"\x1b[<64;5;8M", 0.6)   # the wheel, up, over the list
+f = s.send(b"\x1b[<64;5;6M", 0.6)   # the wheel, up, over the list
 check(left(f)[1].startswith("▌") and edited() == [], "the wheel over the list moves the cursor: %r" % left(f))
-f = s.send(b"\x1b[<65;5;8M", 0.6)   # and back down
+f = s.send(b"\x1b[<65;5;6M", 0.6)   # and back down
 check(left(f)[2].startswith("▌A  src/tax.ts"), "and back: %r" % left(f))
 f = s.send(CTRL_Y, 0.6); dump("copied", f)
 check(copied() == "src/tax.ts", "ctrl+y feeds the path under the cursor to the clipboard command: %r" % copied())
-check("copied src/tax.ts" in f[-2] and prompt(f) == "asgotochanged ❯ Search by path…", "and says so on the help line, leaving the filter alone: %r" % f[-2])
+check("copied src/tax.ts" in f[-2] and foot(f).endswith("f1 options") and prompt(f) == "asgotochanged ❯ Search by path…", "and says so at the foot, next to the panel key, leaving the filter alone: %r" % f[-2])
 os.write(s.master, b"q"); s.pump(0.4)
 check(s.finish() == 0, "q quits with an empty filter")
 

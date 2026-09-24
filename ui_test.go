@@ -17,7 +17,9 @@ import (
 func stripANSI(s string) string { return ansi.Strip(s) }
 
 // footOf is the line at the foot as the frame draws it.
-func footOf(m model) string { return footLine(m.flash, m.notice, m.help, m.keys, m.width-4) }
+func footOf(m model) string {
+	return footLine(m.flash, m.notice, m.context(), m.help, m.keys, m.width-4)
+}
 
 func press(m model, keys ...tea.KeyPressMsg) model {
 	for _, k := range keys {
@@ -251,9 +253,10 @@ func TestFrameGeometry(t *testing.T) {
 		}
 		plain := strings.Split(ansi.Strip(m.render()), "\n")
 		if !strings.HasPrefix(plain[0], "╭") || !strings.HasPrefix(plain[len(plain)-1], "╰") ||
-			!strings.Contains(plain[1], "fix/x -> origin/fix/x") || !strings.Contains(plain[2], "[vs origin/main]") ||
+			!strings.Contains(plain[0], "[vs origin/main]") || !strings.Contains(plain[1], "❯") ||
 			!strings.Contains(plain[len(plain)-3], "─ 4/4 ─┴") ||
-			!strings.Contains(plain[mainY(true)], "┬") || !strings.HasPrefix(plain[listY(true)], "│▌M  ") {
+			!strings.Contains(plain[len(plain)-2], "fix/x -> origin/fix/x") || !strings.HasSuffix(strings.TrimRight(plain[len(plain)-2], " │"), "f1 options") ||
+			!strings.Contains(plain[mainY], "┬") || !strings.HasPrefix(plain[listY], "│▌M  ") {
 			t.Errorf("%v: frame sections misplaced:\n%s", size, strings.Join(plain, "\n"))
 		}
 	}
@@ -261,13 +264,13 @@ func TestFrameGeometry(t *testing.T) {
 
 func TestClickSelectsRow(t *testing.T) {
 	m := fixture(t)
-	next, _ := m.Update(tea.MouseClickMsg{X: 3, Y: listY(true) + 1, Button: tea.MouseLeft})
+	next, _ := m.Update(tea.MouseClickMsg{X: 3, Y: listY + 1, Button: tea.MouseLeft})
 	clicked := next.(model)
 	if got := clicked.current().path; got != "src/cart/tax.ts" {
 		t.Errorf("click on the second row selected %s", got)
 	}
 	// The divider, the preview and the frame's own lines select nothing.
-	for _, c := range [][2]int{{0, listY(true) + 1}, {m.listW() + 1, listY(true) + 1}, {3, mainY(true)}, {3, 1}} {
+	for _, c := range [][2]int{{0, listY + 1}, {m.listW() + 1, listY + 1}, {3, mainY}, {3, 1}} {
 		next, _ = m.Update(tea.MouseClickMsg{X: c[0], Y: c[1], Button: tea.MouseLeft})
 		clicked = next.(model)
 		if got := clicked.current().path; got != "src/cart/total.ts" {
@@ -502,7 +505,7 @@ func TestMouseWheelFollowsThePointer(t *testing.T) {
 	next, _ := fixture(t).Update(tea.WindowSizeMsg{Width: 120, Height: 24})
 	m := next.(model)
 	wheel := func(x int, b tea.MouseButton) {
-		next, _ := m.Update(tea.MouseWheelMsg{X: x, Y: listY(true), Button: b})
+		next, _ := m.Update(tea.MouseWheelMsg{X: x, Y: listY, Button: b})
 		m = next.(model)
 	}
 	first := m.cursor
@@ -552,8 +555,8 @@ func TestCopyKeyCopiesThePath(t *testing.T) {
 	}
 	res, _ = m.Update(clearFlashMsg(m.flash.seq))
 	plain = strings.Split(ansi.Strip(res.(model).render()), "\n")
-	if help := plain[len(plain)-2]; !strings.Contains(help, "type filter") {
-		t.Errorf("after the timer the help is back: %q", help)
+	if foot := plain[len(plain)-2]; !strings.Contains(foot, m.repo.Branch) || !strings.HasSuffix(strings.TrimRight(foot, " │"), "f1 options") {
+		t.Errorf("after the timer the context and the panel key are back: %q", foot)
 	}
 }
 

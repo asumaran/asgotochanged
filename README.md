@@ -13,9 +13,7 @@ diffs, by [hunk](https://hunk.dev) or [delta](https://github.com/dandavison/delt
 [asgotosession](https://github.com/asumaran/asgotosession)).
 
 ```
-╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ ~/wt/shop/fix-cart-total  fix/cart-total -> origin/fix/cart-total (ahead 2, behind 0)                │
-├─────────────────────────────────────────────────────────────────────────────────── [vs origin/main] ─┤
+╭─────────────────────────────────────────────────────────────────────────────────── [vs origin/main] ─╮
 │ ❯ Search by path…                                                                                    │
 ├───────────────────────────┬──────────────────────────────────────────────────────────────────────────┤
 │▌M  src/cart/total.ts      │  src/cart/total.ts                                      +12 -3           │
@@ -24,7 +22,7 @@ diffs, by [hunk](https://hunk.dev) or [delta](https://github.com/dandavison/delt
 │ ?  notes/PLAN.md          │ ▌15    -  return subtotal                                                │
 │                           │ ▌   15 +  return subtotal + tax(subtotal)                                │
 ├───────────────────── 4/4 ─┴─────────────────────────────────────────────────────────────────── 5/64 ─┤
-│ type filter • enter edit • ^t diff mode • ^s whitespace • f1 options • esc/q quit                    │
+│ ~/wt/shop/fix-cart-total  fix/cart-total -> origin/fix/cart-total (ahead 2, behind 0)   f1 options │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -84,7 +82,7 @@ list stays as it is and the cursor does not move.
 | `ctrl+t` | diff mode: auto, side by side, single column (remembered) |
 | panel: Diff renderer | render the diffs with hunk or with delta, as in asgitlog (remembered per tool; hunk by default, delta when hunk is not installed). Choosing one that is not installed says `<name> not found`, in red, and changes nothing |
 | `ctrl+s` | show or ignore whitespace changes, like GitHub's "Hide whitespace" (`git diff -w`, remembered); `[-w]` on the diff's bottom edge while it is on |
-| `ctrl+y` | copy the path of the file under the cursor, relative to the repository root as the list shows it; the help line confirms it for a moment |
+| `ctrl+y` | copy the path of the file under the cursor, relative to the repository root as the list shows it; the foot confirms it for a moment |
 | `↑/↓`, `ctrl+p`/`ctrl+n` | move the cursor |
 | PgDn/PgUp | move the cursor a page |
 | `alt+↑`/`alt+↓`, Home/End | top or bottom of the list |
