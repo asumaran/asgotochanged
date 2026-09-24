@@ -1,3 +1,7 @@
+## v0.12.0 (2026-09-24)
+
+* feat(ui): move the context to the foot next to the panel key (40809f1)
+
 ## v0.11.0 (2026-09-21)
 
 * docs: describe the new shared files and flashes (e937079)
